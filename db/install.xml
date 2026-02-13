@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/webexmeetings/db" VERSION="20260212" COMMENT="XMLDB file for Moodle mod_webexmeetings">
+  <TABLES>
+    <TABLE NAME="webexmeetings" COMMENT="Stores Webex meeting instances">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="course" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Course ID"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Meeting name"/>
+        <FIELD NAME="intro" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Meeting description"/>
+        <FIELD NAME="introformat" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="meeting_id" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Webex meeting ID"/>
+        <FIELD NAME="join_url" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Webex join URL"/>
+        <FIELD NAME="host_email" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Host email address"/>
+        <FIELD NAME="siteurl" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Webex site URL"/>
+        <FIELD NAME="password" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Meeting password"/>
+        <FIELD NAME="start_time" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Meeting start time"/>
+        <FIELD NAME="end_time" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Meeting end time"/>
+        <FIELD NAME="recurring" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Is recurring meeting"/>
+        <FIELD NAME="track_attendance" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Track attendance"/>
+        <FIELD NAME="min_duration" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="10" SEQUENCE="false" COMMENT="Minimum duration in minutes for attendance"/>
+        <FIELD NAME="last_sync" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Last attendance sync time"/>
+        <FIELD NAME="sync_status" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Sync status: pending, success, error"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="course" TYPE="foreign" FIELDS="course" REFTABLE="course" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="meeting_id" UNIQUE="true" FIELDS="meeting_id"/>
+        <INDEX NAME="last_sync" UNIQUE="false" FIELDS="last_sync"/>
+      </INDEXES>
+    </TABLE>
+    
+    <TABLE NAME="webexmeetings_attendance" COMMENT="Attendance records for Webex meetings">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="meetingid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="join_time" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Time user joined"/>
+        <FIELD NAME="leave_time" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Time user left"/>
+        <FIELD NAME="duration" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Total duration in seconds"/>
+        <FIELD NAME="sessionid" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Session identifier"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="meetingid" TYPE="foreign" FIELDS="meetingid" REFTABLE="webexmeetings" REFFIELDS="id"/>
+        <KEY NAME="userid" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="meeting_user" UNIQUE="false" FIELDS="meetingid, userid"/>
+        <INDEX NAME="sessionid" UNIQUE="false" FIELDS="sessionid"/>
+      </INDEXES>
+    </TABLE>
+    
+    <TABLE NAME="webexmeetings_sessions" COMMENT="User sessions in Webex meetings">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="meetingid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="sessionid" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="join_time" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="leave_time" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="duration" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="ip_address" TYPE="char" LENGTH="45" NOTNULL="false" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="meetingid" TYPE="foreign" FIELDS="meetingid" REFTABLE="webexmeetings" REFFIELDS="id"/>
+        <KEY NAME="userid" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="sessionid" UNIQUE="false" FIELDS="sessionid"/>
+        <INDEX NAME="meeting_user_session" UNIQUE="false" FIELDS="meetingid, userid, sessionid"/>
+      </INDEXES>
+    </TABLE>
+    
+    <TABLE NAME="webexmeetings_unmatched" COMMENT="Webex users that could not be matched to Moodle users">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="meetingid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="webex_email" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="webex_displayname" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="webex_id" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="join_time" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="leave_time" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="duration" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="mapped_userid" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Manually mapped Moodle user"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="meetingid" TYPE="foreign" FIELDS="meetingid" REFTABLE="webexmeetings" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="meeting_email" UNIQUE="false" FIELDS="meetingid, webex_email"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
