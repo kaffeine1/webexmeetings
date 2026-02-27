@@ -45,11 +45,11 @@ if ($ADMIN->fulltree) {
         $authoptions
     ));
     
-    // Bot token
+    // Personal / Bot Token
     $settings->add(new admin_setting_configpasswordunmask(
-        'mod_webexmeetings/bot_token',
-        get_string('bottoken', 'webexmeetings'),
-        get_string('bottoken_desc', 'webexmeetings'),
+        'mod_webexmeetings/personal_token',
+        get_string('personaltoken', 'webexmeetings'),
+        get_string('personaltoken_desc', 'webexmeetings'),
         ''
     ));
     
@@ -84,6 +84,15 @@ if ($ADMIN->fulltree) {
         get_string('siteurl_desc', 'webexmeetings'),
         '',
         PARAM_TEXT
+    ));
+    
+    // Default Host Email
+    $settings->add(new admin_setting_configtext(
+        'mod_webexmeetings/api_host_email',
+        get_string('apihostemail', 'webexmeetings'),
+        get_string('apihostemail_desc', 'webexmeetings'),
+        '',
+        PARAM_EMAIL
     ));
     
     // Test connection button

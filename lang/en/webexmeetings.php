@@ -101,13 +101,13 @@ $string['usermapped'] = 'User successfully mapped.';
 
 // Settings
 $string['apisettings'] = 'Webex API settings';
-$string['apisettings_desc'] = 'Configure the credentials for connecting to the Cisco Webex API. You can use either a Bot token or OAuth2 credentials.';
+$string['apisettings_desc'] = 'Configure the credentials for connecting to the Cisco Webex API. Enter your Personal Access Token or alternatively, use OAuth2 credentials.';
 $string['auth_method'] = 'Authentication method';
 $string['auth_method_desc'] = 'Choose how to authenticate with the Webex API.';
-$string['auth_bot'] = 'Bot token';
+$string['auth_bot'] = 'Personal / Bot Token';
 $string['auth_oauth'] = 'OAuth2 (Client credentials + Refresh token)';
-$string['bottoken'] = 'Bot token';
-$string['bottoken_desc'] = 'Enter the Bot access token from the Webex Developer Portal.';
+$string['personaltoken'] = 'Personal Access Token / Integration Token';
+$string['personaltoken_desc'] = 'Enter the Webex token to authorize meeting creation. You can generate this from the developer portal or from a Webex Integration.';
 $string['clientid'] = 'Client ID';
 $string['clientid_desc'] = 'OAuth2 Client ID from the Webex integration.';
 $string['clientsecret'] = 'Client secret';
@@ -116,6 +116,8 @@ $string['refreshtoken'] = 'Refresh token';
 $string['refreshtoken_desc'] = 'OAuth2 Refresh token. This is used to automatically obtain new access tokens.';
 $string['siteurl'] = 'Webex site URL';
 $string['siteurl_desc'] = 'Your Webex site URL (e.g., sitename.webex.com). Leave empty to use the default.';
+$string['apihostemail'] = 'Default Host Email API';
+$string['apihostemail_desc'] = 'If your API token has admin privileges and you want to schedule meetings on behalf of a specific user, enter their Webex email here. Otherwise, leave empty to use the current Moodle user\'s email.';
 $string['testconnection'] = 'Test connection';
 $string['connectionsuccessful'] = 'Connection to Webex API successful!';
 $string['connectionfailed'] = 'Connection to Webex API failed: {$a}';

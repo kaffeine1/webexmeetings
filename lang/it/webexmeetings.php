@@ -101,13 +101,13 @@ $string['usermapped'] = 'Utente mappato con successo.';
 
 // Impostazioni
 $string['apisettings'] = 'Impostazioni API Webex';
-$string['apisettings_desc'] = 'Configura le credenziali per la connessione all\'API Cisco Webex. È possibile utilizzare un token Bot o le credenziali OAuth2.';
+$string['apisettings_desc'] = 'Configura le credenziali per la connessione all\'API Cisco Webex. Inserisci il Personal Access Token oppure, in alternativa, le credenziali OAuth2.';
 $string['auth_method'] = 'Metodo di autenticazione';
 $string['auth_method_desc'] = 'Scegli come autenticarsi con l\'API Webex.';
-$string['auth_bot'] = 'Token Bot';
+$string['auth_bot'] = 'Personal / Bot Token';
 $string['auth_oauth'] = 'OAuth2 (Credenziali client + Refresh token)';
-$string['bottoken'] = 'Token Bot';
-$string['bottoken_desc'] = 'Inserire il token di accesso Bot dal portale sviluppatori Webex.';
+$string['personaltoken'] = 'Personal Access Token / Integration Token';
+$string['personaltoken_desc'] = 'Inserisci il token Webex che autorizza la creazione delle Riunioni. Puoi generarlo dal portale sviluppatori o dall\'Integrazione Webex.';
 $string['clientid'] = 'Client ID';
 $string['clientid_desc'] = 'Client ID OAuth2 dall\'integrazione Webex.';
 $string['clientsecret'] = 'Client secret';
@@ -116,6 +116,8 @@ $string['refreshtoken'] = 'Refresh token';
 $string['refreshtoken_desc'] = 'Refresh token OAuth2. Viene utilizzato per ottenere automaticamente nuovi access token.';
 $string['siteurl'] = 'URL sito Webex';
 $string['siteurl_desc'] = 'URL del sito Webex (es. nomesito.webex.com). Lasciare vuoto per usare il predefinito.';
+$string['apihostemail'] = 'Email Host Predefinita (Host Email)';
+$string['apihostemail_desc'] = 'Se il token API appartiene a un amministratore o a un servizio e vuoi creare le riunioni per conto di un utente specifico, inserisci qui la sua email Webex. Altrimenti lascia vuoto per usare l\'email dell\'utente Moodle corrente.';
 $string['testconnection'] = 'Test connessione';
 $string['connectionsuccessful'] = 'Connessione all\'API Webex riuscita!';
 $string['connectionfailed'] = 'Connessione all\'API Webex fallita: {$a}';

@@ -62,68 +62,78 @@ class webex_api {
      */
     private function get_access_token() {
         // Check if we have a valid cached token
-        $cache = \cache::make('mod_webexmeetings', 'oauth_token');
-        $cached_token = $cache->get('access_token');
+        // Cache control temporarily disabled to force reading the new token
+        // $cache = \cache::make('mod_webexmeetings', 'oauth_token');
+        // $cached_token = $cache->get('access_token');
+        // 
+        // if ($cached_token && $cached_token['expires'] > time()) {
+        //     $this->access_token = trim($cached_token['token']);
+        //     return $this->access_token;
+        // }
         
-        if ($cached_token && $cached_token['expires'] > time()) {
-            $this->access_token = $cached_token['token'];
-            return $this->access_token;
-        }
+        // Check Authentication Method
+        $auth_method = get_config('mod_webexmeetings', 'auth_method');
         
-        // Check if using bot token (static, does not expire)
-        $bot_token = get_config('mod_webexmeetings', 'bot_token');
-        if (!empty($bot_token)) {
-            $this->access_token = $bot_token;
-            // Cache bot token for 24 hours
-            $cache->set('access_token', array(
-                'token' => $bot_token,
-                'expires' => time() + 86400
-            ));
-            return $this->access_token;
-        }
-        
-        // OAuth2 refresh token flow
-        $client_id = get_config('mod_webexmeetings', 'client_id');
-        $client_secret = get_config('mod_webexmeetings', 'client_secret');
-        $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
-        
-        if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
-            throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
-        }
-        
-        $token_url = self::API_BASE_URL . '/access_token';
-        
-        $params = array(
-            'grant_type' => 'refresh_token',
-            'client_id' => $client_id,
-            'client_secret' => $client_secret,
-            'refresh_token' => $refresh_token,
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
-        $this->rate_limit_check();
-        $response = $curl->post($token_url, http_build_query($params));
-        $data = json_decode($response);
-        
-        if (isset($data->access_token)) {
-            $this->access_token = $data->access_token;
+        if ($auth_method !== 'oauth') {
+            // Check if using Personal Access Token (static)
+            $personal_token = get_config('mod_webexmeetings', 'personal_token');
+            if (!empty($personal_token)) {
+                $this->access_token = trim($personal_token);
+                // Cache personal token for 24 hours (or its natural lifespan)
+                // $cache->set('access_token', array(
+                //     'token' => $this->access_token,
+                //     'expires' => time() + 86400
+                // ));
+                return $this->access_token;
+            }
+        } else {
+            // OAuth2 refresh token flow
+            $client_id = get_config('mod_webexmeetings', 'client_id');
+            $client_secret = get_config('mod_webexmeetings', 'client_secret');
+            $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
             
-            // Cache token
-            $cache->set('access_token', array(
-                'token' => $data->access_token,
-                'expires' => time() + ($data->expires_in ?? 3600) - 300 // 5 minutes buffer
-            ));
-            
-            // Update refresh token if a new one was provided
-            if (isset($data->refresh_token)) {
-                set_config('refresh_token', $data->refresh_token, 'mod_webexmeetings');
+            if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
+                throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
             }
             
-            return $this->access_token;
+            $token_url = self::API_BASE_URL . '/access_token';
+            
+            $params = array(
+                'grant_type' => 'refresh_token',
+                'client_id' => trim($client_id),
+                'client_secret' => trim($client_secret),
+                'refresh_token' => trim($refresh_token),
+            );
+            
+            $curl = new \curl();
+            $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
+            $this->rate_limit_check();
+            $response = $curl->post($token_url, http_build_query($params));
+            $data = json_decode($response);
+            
+            // Debug the OAuth flow
+            $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
+            file_put_contents($debug_file, "==== OAUTH TOKEN REFRESH ====\n" . print_r($data, true) . "\n\n", FILE_APPEND);
+            
+            if (isset($data->access_token)) {
+                $this->access_token = $data->access_token;
+                
+                // Cache token
+                // $cache->set('access_token', array(
+                //     'token' => $data->access_token,
+                //     'expires' => time() + ($data->expires_in ?? 3600) - 300 // 5 minutes buffer
+                // ));
+                
+                // Update refresh token if a new one was provided
+                if (isset($data->refresh_token)) {
+                    set_config('refresh_token', $data->refresh_token, 'mod_webexmeetings');
+                }
+                
+                return $this->access_token;
+            }
+            
+            throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings', '', null, $response);
         }
-        
-        throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings', '', null, $response);
     }
 
     /**
@@ -180,23 +190,41 @@ class webex_api {
             $meeting['recurrence'] = $this->build_recurrence_pattern($meeting_data);
         }
 
-        // Debug payload
-        debugging('Webex API create payload: ' . json_encode($meeting), DEBUG_DEVELOPER);
-        
+        // Add explicit host email if configured in settings
+        $api_host_email = get_config('mod_webexmeetings', 'api_host_email');
+        if (!empty($api_host_email)) {
+            $meeting['hostEmail'] = $api_host_email;
+        }
+
         $headers = array(
             'Authorization: Bearer ' . $this->access_token,
             'Content-Type: application/json'
         );
+        
+        // Debug Request
+        $debug_req = array(
+            'date' => date('Y-m-d H:i:s'),
+            'url' => $url,
+            'method' => 'POST',
+            'auth' => 'Bearer ***' . substr($this->access_token, -5), // Show only last 5 chars
+            'api_host_email_setting' => $api_host_email,
+            'payload' => $meeting
+        );
+        $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
+        file_put_contents($debug_file, "==== WEBEX API REQUEST ====\n" . print_r($debug_req, true) . "\n", FILE_APPEND);
         
         $curl = new \curl();
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->post($url, json_encode($meeting));
 
-        // Debug response
+        // Debug Response
         $info = $curl->get_info();
-        debugging('Webex API HTTP status: ' . ($info['http_code'] ?? 'unknown'), DEBUG_DEVELOPER);
-        debugging('Webex API response: ' . $response, DEBUG_DEVELOPER);
+        $debug_res = array(
+            'http_code' => $info['http_code'] ?? 'unknown',
+            'raw_response' => $response
+        );
+        file_put_contents($debug_file, "==== WEBEX API RESPONSE ====\n" . print_r($debug_res, true) . "\n\n", FILE_APPEND);
         
         $result = json_decode($response);
         
@@ -532,10 +560,27 @@ class webex_api {
             'Content-Type: application/json'
         );
 
+        $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
+        $debug_req = array(
+            'date' => date('Y-m-d H:i:s'),
+            'action' => 'test_connection',
+            'url' => $url,
+            'auth_header_sent' => 'Bearer ***' . substr($this->access_token, -10),
+            'token_length' => strlen($this->access_token)
+        );
+        file_put_contents($debug_file, "==== TEST CONNECTION REQUEST ====\n" . print_r($debug_req, true) . "\n", FILE_APPEND);
+
         $curl = new \curl();
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->get($url);
+
+        $info = $curl->get_info();
+        $debug_res = array(
+            'http_code' => $info['http_code'] ?? 'unknown',
+            'raw_response' => $response
+        );
+        file_put_contents($debug_file, "==== TEST CONNECTION RESPONSE ====\n" . print_r($debug_res, true) . "\n\n", FILE_APPEND);
 
         $result = json_decode($response);
 

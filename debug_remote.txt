@@ -1,0 +1,172 @@
+==== TEST CONNECTION REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:17:50
+    [action] => test_connection
+    [url] => https://webexapis.com/v1/people/me
+    [auth_header_sent] => Bearer ***62323aed80
+    [token_length] => 106
+)
+
+==== TEST CONNECTION RESPONSE ====
+Array
+(
+    [http_code] => 200
+    [raw_response] => {"id":"Y2lzY29zcGFyazovL3VzL1BFT1BMRS8xZTIwY2NkMi0wNDYxLTQ0NzItOTVkZi1lMjcyZmFiMjdmZTU","emails":["michele.dipace@kaffeine.net"],"phoneNumbers":[{"type":"work","value":"+1 380-299-3882","primary":true}],"displayName":"Michele Dipace","nickName":"Michele","firstName":"Michele","lastName":"Dipace","userName":"michele.dipace@kaffeine.net","orgId":"Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi83MWI2YjM0Yy1hYmZmLTQ0MDctYWM1MC01ZTYyMzIzYWVkODA","created":"2026-02-26T10:01:43.172Z","lastModified":"2026-02-26T10:02:40.405Z","timeZone":"Europe/Rome","status":"unknown","type":"person"}
+)
+
+
+==== WEBEX API REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:18:55
+    [url] => https://webexapis.com/v1/meetings
+    [method] => POST
+    [auth] => Bearer ***aed80
+    [api_host_email_setting] => michele.dipace@kaffeine.net
+    [payload] => Array
+        (
+            [title] => test
+            [start] => 2026-02-27T09:19:00Z
+            [end] => 2026-02-27T11:18:00Z
+            [enabledAutoRecordMeeting] => 
+            [allowAnyUserToBeCoHost] => 
+            [hostEmail] => michele.dipace@kaffeine.net
+        )
+
+)
+
+==== WEBEX API RESPONSE ====
+Array
+(
+    [http_code] => 403
+    [raw_response] => {"message":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses.","errors":[{"description":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses."}],"trackingId":"ROUTERGW_fa157ca5-e0eb-4274-b8c1-db52ba1bfdad"}
+)
+
+
+==== TEST CONNECTION REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:21:51
+    [action] => test_connection
+    [url] => https://webexapis.com/v1/people/me
+    [auth_header_sent] => Bearer ***62323aed80
+    [token_length] => 106
+)
+
+==== TEST CONNECTION RESPONSE ====
+Array
+(
+    [http_code] => 200
+    [raw_response] => {"id":"Y2lzY29zcGFyazovL3VzL1BFT1BMRS8xZTIwY2NkMi0wNDYxLTQ0NzItOTVkZi1lMjcyZmFiMjdmZTU","emails":["michele.dipace@kaffeine.net"],"phoneNumbers":[{"type":"work","value":"+1 380-299-3882","primary":true}],"displayName":"Michele Dipace","nickName":"Michele","firstName":"Michele","lastName":"Dipace","userName":"michele.dipace@kaffeine.net","orgId":"Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi83MWI2YjM0Yy1hYmZmLTQ0MDctYWM1MC01ZTYyMzIzYWVkODA","created":"2026-02-26T10:01:43.172Z","lastModified":"2026-02-26T10:02:40.405Z","timeZone":"Europe/Rome","status":"unknown","type":"person"}
+)
+
+
+==== WEBEX API REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:22:36
+    [url] => https://webexapis.com/v1/meetings
+    [method] => POST
+    [auth] => Bearer ***aed80
+    [api_host_email_setting] => 
+    [payload] => Array
+        (
+            [title] => test
+            [start] => 2026-02-27T10:22:00Z
+            [end] => 2026-02-27T11:22:00Z
+            [enabledAutoRecordMeeting] => 
+            [allowAnyUserToBeCoHost] => 
+        )
+
+)
+
+==== WEBEX API RESPONSE ====
+Array
+(
+    [http_code] => 403
+    [raw_response] => {"message":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses.","errors":[{"description":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses."}],"trackingId":"ROUTERGW_59467e36-64ed-4079-a02b-83e676348ed0"}
+)
+
+
+==== TEST CONNECTION REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:37:30
+    [action] => test_connection
+    [url] => https://webexapis.com/v1/people/me
+    [auth_header_sent] => Bearer ***62323aed80
+    [token_length] => 106
+)
+
+==== TEST CONNECTION RESPONSE ====
+Array
+(
+    [http_code] => 200
+    [raw_response] => {"id":"Y2lzY29zcGFyazovL3VzL1BFT1BMRS8xZTIwY2NkMi0wNDYxLTQ0NzItOTVkZi1lMjcyZmFiMjdmZTU","emails":["michele.dipace@kaffeine.net"],"phoneNumbers":[{"type":"work","value":"+1 380-299-3882","primary":true}],"displayName":"Michele Dipace","nickName":"Michele","firstName":"Michele","lastName":"Dipace","userName":"michele.dipace@kaffeine.net","orgId":"Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi83MWI2YjM0Yy1hYmZmLTQ0MDctYWM1MC01ZTYyMzIzYWVkODA","created":"2026-02-26T10:01:43.172Z","lastModified":"2026-02-26T10:02:40.405Z","timeZone":"Europe/Rome","status":"unknown","type":"person"}
+)
+
+
+==== TEST CONNECTION REQUEST ====
+Array
+(
+    [date] => 2026-02-27 09:37:40
+    [action] => test_connection
+    [url] => https://webexapis.com/v1/people/me
+    [auth_header_sent] => Bearer ***62323aed80
+    [token_length] => 106
+)
+
+==== TEST CONNECTION RESPONSE ====
+Array
+(
+    [http_code] => 200
+    [raw_response] => {"id":"Y2lzY29zcGFyazovL3VzL1BFT1BMRS8xZTIwY2NkMi0wNDYxLTQ0NzItOTVkZi1lMjcyZmFiMjdmZTU","emails":["michele.dipace@kaffeine.net"],"phoneNumbers":[{"type":"work","value":"+1 380-299-3882","primary":true}],"displayName":"Michele Dipace","nickName":"Michele","firstName":"Michele","lastName":"Dipace","userName":"michele.dipace@kaffeine.net","orgId":"Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi83MWI2YjM0Yy1hYmZmLTQ0MDctYWM1MC01ZTYyMzIzYWVkODA","created":"2026-02-26T10:01:43.172Z","lastModified":"2026-02-26T10:02:40.405Z","timeZone":"Europe/Rome","status":"unknown","type":"person"}
+)
+
+
+==== TEST CONNECTION REQUEST ====
+Array
+(
+    [date] => 2026-02-27 10:19:38
+    [action] => test_connection
+    [url] => https://webexapis.com/v1/people/me
+    [auth_header_sent] => Bearer ***62323aed80
+    [token_length] => 106
+)
+
+==== TEST CONNECTION RESPONSE ====
+Array
+(
+    [http_code] => 200
+    [raw_response] => {"id":"Y2lzY29zcGFyazovL3VzL1BFT1BMRS8xZTIwY2NkMi0wNDYxLTQ0NzItOTVkZi1lMjcyZmFiMjdmZTU","emails":["michele.dipace@kaffeine.net"],"phoneNumbers":[{"type":"work","value":"+1 380-299-3882","primary":true}],"displayName":"Michele Dipace","nickName":"Michele","firstName":"Michele","lastName":"Dipace","userName":"michele.dipace@kaffeine.net","orgId":"Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi83MWI2YjM0Yy1hYmZmLTQ0MDctYWM1MC01ZTYyMzIzYWVkODA","created":"2026-02-26T10:01:43.172Z","lastModified":"2026-02-26T10:02:40.405Z","timeZone":"Europe/Rome","status":"unknown","type":"person"}
+)
+
+
+==== WEBEX API REQUEST ====
+Array
+(
+    [date] => 2026-02-27 10:20:15
+    [url] => https://webexapis.com/v1/meetings
+    [method] => POST
+    [auth] => Bearer ***aed80
+    [api_host_email_setting] => 
+    [payload] => Array
+        (
+            [title] => test
+            [start] => 2026-02-27T10:20:00Z
+            [end] => 2026-02-27T12:20:00Z
+            [enabledAutoRecordMeeting] => 
+            [allowAnyUserToBeCoHost] => 
+        )
+
+)
+
+==== WEBEX API RESPONSE ====
+Array
+(
+    [http_code] => 403
+    [raw_response] => {"message":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses.","errors":[{"description":"The server understood the request, but refused to fulfill it because the access token is missing required scopes or the user is missing required roles or licenses."}],"trackingId":"ROUTERGW_2c6a47ff-5c33-4c29-b957-9c7005c4d0b4"}
+)
+
+
