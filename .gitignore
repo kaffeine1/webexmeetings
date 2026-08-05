@@ -1,2 +1,21 @@
-firebase-debug.log
+# Development tools
 .claude/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+
+# Webex OAuth credentials and token responses
+webex_oauth.json
+webex_oauth_*.json
+webex_oauth*.json
+oauth_tokens*.json
+credentials*.json
+secrets*.json
+
+# Local debug and log files
+firebase-debug.log
+webex_debug.txt
+debug*.txt
+*.log
