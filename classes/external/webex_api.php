@@ -53,87 +53,62 @@ class webex_api {
     }
     
     /**
-     * Get access token
-     * Webex supports multiple auth methods:
-     * - Bot token (static, configured in settings)
-     * - OAuth2 with refresh token
+     * Get access token.
+     *
+     * Webex supports multiple authentication methods:
+     * - Personal access token, for temporary testing only.
+     * - OAuth2 with refresh token, for production use.
      *
      * @return string
      */
     private function get_access_token() {
-        // Check if we have a valid cached token
-        // Cache control temporarily disabled to force reading the new token
-        // $cache = \cache::make('mod_webexmeetings', 'oauth_token');
-        // $cached_token = $cache->get('access_token');
-        // 
-        // if ($cached_token && $cached_token['expires'] > time()) {
-        //     $this->access_token = trim($cached_token['token']);
-        //     return $this->access_token;
-        // }
-        
-        // Check Authentication Method
         $auth_method = get_config('mod_webexmeetings', 'auth_method');
         
         if ($auth_method !== 'oauth') {
-            // Check if using Personal Access Token (static)
             $personal_token = get_config('mod_webexmeetings', 'personal_token');
-            if (!empty($personal_token)) {
-                $this->access_token = trim($personal_token);
-                // Cache personal token for 24 hours (or its natural lifespan)
-                // $cache->set('access_token', array(
-                //     'token' => $this->access_token,
-                //     'expires' => time() + 86400
-                // ));
-                return $this->access_token;
-            }
-        } else {
-            // OAuth2 refresh token flow
-            $client_id = get_config('mod_webexmeetings', 'client_id');
-            $client_secret = get_config('mod_webexmeetings', 'client_secret');
-            $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
-            
-            if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
+            if (empty($personal_token)) {
                 throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
             }
-            
-            $token_url = self::API_BASE_URL . '/access_token';
-            
-            $params = array(
-                'grant_type' => 'refresh_token',
-                'client_id' => trim($client_id),
-                'client_secret' => trim($client_secret),
-                'refresh_token' => trim($refresh_token),
-            );
-            
-            $curl = new \curl();
-            $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
-            $this->rate_limit_check();
-            $response = $curl->post($token_url, http_build_query($params));
-            $data = json_decode($response);
-            
-            // Debug the OAuth flow
-            $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
-            file_put_contents($debug_file, "==== OAUTH TOKEN REFRESH ====\n" . print_r($data, true) . "\n\n", FILE_APPEND);
-            
-            if (isset($data->access_token)) {
-                $this->access_token = $data->access_token;
-                
-                // Cache token
-                // $cache->set('access_token', array(
-                //     'token' => $data->access_token,
-                //     'expires' => time() + ($data->expires_in ?? 3600) - 300 // 5 minutes buffer
-                // ));
-                
-                // Update refresh token if a new one was provided
-                if (isset($data->refresh_token)) {
-                    set_config('refresh_token', $data->refresh_token, 'mod_webexmeetings');
-                }
-                
-                return $this->access_token;
-            }
-            
-            throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings', '', null, $response);
+
+            $this->access_token = trim($personal_token);
+            return $this->access_token;
         }
+
+        $client_id = get_config('mod_webexmeetings', 'client_id');
+        $client_secret = get_config('mod_webexmeetings', 'client_secret');
+        $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
+        
+        if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
+            throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
+        }
+        
+        $token_url = self::API_BASE_URL . '/access_token';
+        $params = array(
+            'grant_type' => 'refresh_token',
+            'client_id' => trim($client_id),
+            'client_secret' => trim($client_secret),
+            'refresh_token' => trim($refresh_token),
+        );
+        
+        $curl = new \curl();
+        $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
+        $this->rate_limit_check();
+        $response = $curl->post($token_url, http_build_query($params));
+        $data = json_decode($response);
+        
+        if (!isset($data->access_token)) {
+            // Never expose or persist the raw OAuth response because it may contain credentials.
+            throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings');
+        }
+
+        $this->access_token = trim($data->access_token);
+        
+        // Webex may rotate the refresh token during renewal.
+        if (isset($data->refresh_token) && !empty($data->refresh_token)) {
+            set_config('refresh_token', trim($data->refresh_token), 'mod_webexmeetings');
+        }
+        
+        return $this->access_token;
     }
 
     /**
@@ -201,38 +176,17 @@ class webex_api {
             'Content-Type: application/json'
         );
         
-        // Debug Request
-        $debug_req = array(
-            'date' => date('Y-m-d H:i:s'),
-            'url' => $url,
-            'method' => 'POST',
-            'auth' => 'Bearer ***' . substr($this->access_token, -5), // Show only last 5 chars
-            'api_host_email_setting' => $api_host_email,
-            'payload' => $meeting
-        );
-        $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
-        file_put_contents($debug_file, "==== WEBEX API REQUEST ====\n" . print_r($debug_req, true) . "\n", FILE_APPEND);
-        
         $curl = new \curl();
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->post($url, json_encode($meeting));
-
-        // Debug Response
-        $info = $curl->get_info();
-        $debug_res = array(
-            'http_code' => $info['http_code'] ?? 'unknown',
-            'raw_response' => $response
-        );
-        file_put_contents($debug_file, "==== WEBEX API RESPONSE ====\n" . print_r($debug_res, true) . "\n\n", FILE_APPEND);
-        
         $result = json_decode($response);
         
         if (isset($result->id)) {
             return $result;
         }
 
-        $message = isset($result->message) ? $result->message : $response;
+        $message = isset($result->message) ? $result->message : 'Unknown error';
         if (isset($result->errors) && is_array($result->errors)) {
             $message = implode('; ', array_map(function($err) {
                 return $err->description ?? '';
@@ -276,7 +230,7 @@ class webex_api {
 
         $result = json_decode($response);
         if ($response === false || (isset($result->message) && !isset($result->id))) {
-            $message = isset($result->message) ? $result->message : $response;
+            $message = isset($result->message) ? $result->message : 'Unknown error';
             throw new \Exception('Failed to update Webex meeting: ' . $message);
         }
 
@@ -303,7 +257,7 @@ class webex_api {
 
         $result = json_decode($response);
         if ($response === false || (isset($result->message) && !isset($result->id))) {
-            $message = isset($result->message) ? $result->message : ($response ?: 'Unknown error');
+            $message = isset($result->message) ? $result->message : 'Unknown error';
             throw new \Exception('Failed to delete Webex meeting: ' . $message);
         }
 
@@ -560,28 +514,10 @@ class webex_api {
             'Content-Type: application/json'
         );
 
-        $debug_file = sys_get_temp_dir() . '/webex_debug.txt';
-        $debug_req = array(
-            'date' => date('Y-m-d H:i:s'),
-            'action' => 'test_connection',
-            'url' => $url,
-            'auth_header_sent' => 'Bearer ***' . substr($this->access_token, -10),
-            'token_length' => strlen($this->access_token)
-        );
-        file_put_contents($debug_file, "==== TEST CONNECTION REQUEST ====\n" . print_r($debug_req, true) . "\n", FILE_APPEND);
-
         $curl = new \curl();
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->get($url);
-
-        $info = $curl->get_info();
-        $debug_res = array(
-            'http_code' => $info['http_code'] ?? 'unknown',
-            'raw_response' => $response
-        );
-        file_put_contents($debug_file, "==== TEST CONNECTION RESPONSE ====\n" . print_r($debug_res, true) . "\n\n", FILE_APPEND);
-
         $result = json_decode($response);
 
         if (isset($result->id)) {
