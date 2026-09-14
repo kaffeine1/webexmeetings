@@ -53,61 +53,12 @@ class webex_api {
     }
     
     /**
-     * Get access token.
-     *
-     * Webex supports multiple authentication methods:
-     * - Personal access token, for temporary testing only.
-     * - OAuth2 with refresh token, for production use.
+     * Get a shared OAuth access token or the configured legacy personal token.
      *
      * @return string
      */
     private function get_access_token() {
-        $auth_method = get_config('mod_webexmeetings', 'auth_method');
-        
-        if ($auth_method !== 'oauth') {
-            $personal_token = get_config('mod_webexmeetings', 'personal_token');
-            if (empty($personal_token)) {
-                throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
-            }
-
-            $this->access_token = trim($personal_token);
-            return $this->access_token;
-        }
-
-        $client_id = get_config('mod_webexmeetings', 'client_id');
-        $client_secret = get_config('mod_webexmeetings', 'client_secret');
-        $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
-        
-        if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
-            throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
-        }
-        
-        $token_url = self::API_BASE_URL . '/access_token';
-        $params = array(
-            'grant_type' => 'refresh_token',
-            'client_id' => trim($client_id),
-            'client_secret' => trim($client_secret),
-            'refresh_token' => trim($refresh_token),
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
-        $this->rate_limit_check();
-        $response = $curl->post($token_url, http_build_query($params));
-        $data = json_decode($response);
-        
-        if (!isset($data->access_token)) {
-            // Never expose or persist the raw OAuth response because it may contain credentials.
-            throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings');
-        }
-
-        $this->access_token = trim($data->access_token);
-        
-        // Webex may rotate the refresh token during renewal.
-        if (isset($data->refresh_token) && !empty($data->refresh_token)) {
-            set_config('refresh_token', trim($data->refresh_token), 'mod_webexmeetings');
-        }
-        
+        $this->access_token = (new \mod_webexmeetings\local\oauth())->access_token();
         return $this->access_token;
     }
 
@@ -180,6 +131,7 @@ class webex_api {
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->post($url, json_encode($meeting));
+
         $result = json_decode($response);
         
         if (isset($result->id)) {
@@ -518,6 +470,7 @@ class webex_api {
         $curl->setHeader($headers);
         $this->rate_limit_check();
         $response = $curl->get($url);
+
         $result = json_decode($response);
 
         if (isset($result->id)) {

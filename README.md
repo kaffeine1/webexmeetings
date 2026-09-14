@@ -12,6 +12,13 @@ This is a Moodle activity module that allows teachers to create and manage Webex
 2. Log in as an administrator and complete the installation process.
 3. Configure the plugin settings with your Webex API credentials.
 
+### Connect Webex
+Initial OAuth authorisation and token renewal are managed inside Moodle.
+Register the displayed callback in a Webex Integration, save its Client ID and
+Client Secret, then use **Webex connection > Connect Webex** to grant consent.
+See [OAuth setup and verification](OAUTH.md) for permission profiles, safety and
+rollback instructions. No manual refresh-token transfer is required.
+
 ## Features
 - Create, update, and delete Webex meetings from Moodle
 - Automatic synchronization of meeting attendance back to Moodle grades

@@ -69,12 +69,25 @@ if ($ADMIN->fulltree) {
         ''
     ));
     
-    // Refresh Token
-    $settings->add(new admin_setting_configpasswordunmask(
-        'mod_webexmeetings/refresh_token',
-        get_string('refreshtoken', 'webexmeetings'),
-        get_string('refreshtoken_desc', 'webexmeetings'),
-        ''
+    $settings->add(new admin_setting_configselect(
+        'mod_webexmeetings/oauth_scope_profile',
+        get_string('oauthscopeprofile', 'webexmeetings'),
+        '',
+        'host',
+        [
+            'host' => get_string('oauthscopehost', 'webexmeetings'),
+            'organization' => get_string('oauthscopeorganization', 'webexmeetings'),
+        ]
+    ));
+
+    // Never include the rotating refresh token in a settings form that may remain open in another tab.
+    $settings->add(new admin_setting_heading(
+        'mod_webexmeetings/oauthconnection',
+        get_string('oauthmanage', 'webexmeetings'),
+        html_writer::tag('div', html_writer::tag('strong', get_string('oauthredirecturi', 'webexmeetings')) . ': ' .
+            html_writer::tag('code', s(\mod_webexmeetings\local\oauth::redirect_uri()->out(false)), ['class' => 'text-break'])) .
+        html_writer::link(\mod_webexmeetings\local\oauth::management_url(), get_string('oauthmanage', 'webexmeetings'),
+            ['class' => 'btn btn-secondary'])
     ));
     
     // Site URL

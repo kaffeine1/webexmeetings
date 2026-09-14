@@ -28,7 +28,10 @@ function xmldb_webexmeetings_upgrade($oldversion) {
     global $DB;
     $dbman = $DB->get_manager();
 
-    // Future upgrades go here.
+    if ($oldversion < 2026091400) {
+        // Existing OAuth and personal credentials are retained; there are no schema changes.
+        upgrade_mod_savepoint(true, 2026091400, 'webexmeetings');
+    }
 
     return true;
 }
