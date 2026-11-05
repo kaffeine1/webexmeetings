@@ -82,7 +82,8 @@ final class hook_callbacks_test extends \advanced_testcase {
         }
 
         $this->assertInstanceOf(\navigation_node::class, $node);
-        $this->assertSame(get_string('oauthconnect', oauth::COMPONENT), $node->text);
+        $this->assertSame('Webex', $node->text);
+        $this->assertSame(get_string('webexnavigation', oauth::COMPONENT), $node->text);
         $this->assertSame(oauth::management_url()->out(false), $node->action->out(false));
         $this->assertSame([], $node->action->params());
         $count = $navigation->children->count();

@@ -33,7 +33,7 @@ final class hook_callbacks {
         }
 
         $navigation->add(
-            get_string('oauthconnect', oauth::COMPONENT),
+            get_string('webexnavigation', oauth::COMPONENT),
             oauth::management_url(),
             \navigation_node::TYPE_CUSTOM,
             null,

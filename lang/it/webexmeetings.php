@@ -146,6 +146,7 @@ $string['oauthscopeprofile'] = 'Profilo dei permessi Webex';
 $string['oauthscopehost'] = 'Riunioni dell\'account autorizzante';
 $string['oauthscopeorganization'] = 'Riunioni dell\'organizzazione (amministratore Webex)';
 $string['oauthconnect'] = 'Collega Webex';
+$string['webexnavigation'] = 'Webex';
 $string['oauthdelegateuser'] = 'Utente autorizzato a collegare Webex';
 $string['oauthdelegatewarning'] = 'L\'utente selezionato potra autorizzare o sostituire il collegamento Webex per tutta l\'istanza Moodle. Svuotare la selezione per revocare il permesso.';
 $string['oauthdelegatesaved'] = 'L\'utente autorizzato a collegare Webex e stato aggiornato.';
