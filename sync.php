@@ -34,6 +34,10 @@ $webexmeeting = $DB->get_record('webexmeetings', array('id' => $cm->instance), '
 require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
 require_capability('mod/webexmeetings:syncattendance', $context);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    throw new moodle_exception('oauthpostrequired', 'mod_webexmeetings');
+}
+require_sesskey();
 
 $PAGE->set_url('/mod/webexmeetings/sync.php', array('id' => $cm->id));
 $PAGE->set_title(get_string('syncattendance', 'webexmeetings'));
@@ -51,7 +55,8 @@ if (empty($webexmeeting->meeting_id)) {
 
 try {
     $webex_api = new \mod_webexmeetings\external\webex_api();
-    $attendance_data = $webex_api->get_attendance($webexmeeting->meeting_id);
+    $attendance_data = $webex_api->get_attendance($webexmeeting->meeting_id, (int)$webexmeeting->id,
+        (int)$webexmeeting->start_time, (int)$webexmeeting->end_time);
     
     if ($attendance_data && !empty($attendance_data)) {
         $synced = 0;
@@ -61,39 +66,8 @@ try {
                 continue;
             }
             
-            // Process each session
-            foreach ($participant->sessions as $session_data) {
-                $sessionid = $webexmeeting->meeting_id . '_' . $participant->userid . '_' . $session_data->join_time;
-                
-                // Check if session already exists
-                $existing = $DB->get_record('webexmeetings_sessions', array(
-                    'meetingid' => $webexmeeting->id,
-                    'userid' => $participant->userid,
-                    'join_time' => $session_data->join_time
-                ));
-                
-                if (!$existing) {
-                    $record = new stdClass();
-                    $record->meetingid = $webexmeeting->id;
-                    $record->userid = $participant->userid;
-                    $record->sessionid = $sessionid;
-                    $record->join_time = $session_data->join_time;
-                    $record->leave_time = $session_data->leave_time;
-                    $record->duration = $session_data->duration;
-                    
-                    $DB->insert_record('webexmeetings_sessions', $record);
-                } else {
-                    // Update if leave_time changed
-                    if ($existing->leave_time != $session_data->leave_time) {
-                        $existing->leave_time = $session_data->leave_time;
-                        $existing->duration = $session_data->duration;
-                        $DB->update_record('webexmeetings_sessions', $existing);
-                    }
-                }
-            }
-            
-            // Update attendance summary
-            webexmeetings_update_attendance_summary($webexmeeting->id, $participant->userid);
+            \mod_webexmeetings\local\attendance_mapping::store_sessions(
+                (int)$webexmeeting->id, (int)$participant->userid, $participant->sessions);
             $synced++;
         }
         

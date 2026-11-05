@@ -28,7 +28,32 @@ function xmldb_webexmeetings_upgrade($oldversion) {
     global $DB;
     $dbman = $DB->get_manager();
 
-    // Future upgrades go here.
+    if ($oldversion < 2026091400) {
+        // Existing OAuth and personal credentials are retained; there are no schema changes.
+        upgrade_mod_savepoint(true, 2026091400, 'webexmeetings');
+    }
 
+    if ($oldversion < 2026093000) {
+        upgrade_mod_savepoint(true, 2026093000, 'webexmeetings');
+    }
+
+    if ($oldversion < 2026110400) {
+        $table = new xmldb_table('webexmeetings');
+        foreach (['disclaimer_participants', 'disclaimer_assignees'] as $name) {
+            $field = new xmldb_field($name, XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        upgrade_mod_savepoint(true, 2026110400, 'webexmeetings');
+    }
+    if ($oldversion < 2026110500) {
+        // Access-window and password-display changes do not alter stored meeting data.
+        upgrade_mod_savepoint(true, 2026110500, 'webexmeetings');
+    }
+    if ($oldversion < 2026110501) {
+        // Personal entry is opt-in; existing credentials, meetings and attendance stay unchanged.
+        upgrade_mod_savepoint(true, 2026110501, 'webexmeetings');
+    }
     return true;
 }

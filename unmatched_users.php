@@ -39,37 +39,13 @@ require_capability('mod/webexmeetings:syncattendance', $context);
 
 $returnurl = new moodle_url('/mod/webexmeetings/unmatched_users.php', array('id' => $cm->id));
 
-// Handle mapping
-if ($mapid && $userid && confirm_sesskey()) {
-    $unmatched = $DB->get_record('webexmeetings_unmatched', array('id' => $mapid), '*', MUST_EXIST);
-    $unmatched->mapped_userid = $userid;
-    $DB->update_record('webexmeetings_unmatched', $unmatched);
-    
-    // Create attendance record for the mapped user
-    if ($unmatched->join_time) {
-        $sessionid = $webexmeeting->meeting_id . '_' . $userid . '_' . $unmatched->join_time;
-        
-        $existing = $DB->get_record('webexmeetings_sessions', array(
-            'meetingid' => $webexmeeting->id,
-            'userid' => $userid,
-            'join_time' => $unmatched->join_time
-        ));
-        
-        if (!$existing) {
-            $session = new stdClass();
-            $session->meetingid = $webexmeeting->id;
-            $session->userid = $userid;
-            $session->sessionid = $sessionid;
-            $session->join_time = $unmatched->join_time;
-            $session->leave_time = $unmatched->leave_time;
-            $session->duration = $unmatched->duration;
-            
-            $DB->insert_record('webexmeetings_sessions', $session);
-        }
-        
-        webexmeetings_update_attendance_summary($webexmeeting->id, $userid);
+// All mutations require an explicit POST and a valid session key.
+if ($mapid || $userid) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        throw new moodle_exception('oauthpostrequired', 'mod_webexmeetings');
     }
-    
+    require_sesskey();
+    \mod_webexmeetings\local\attendance_mapping::map((int)$webexmeeting->id, $mapid, $userid);
     redirect($returnurl, get_string('usermapped', 'webexmeetings'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
 
@@ -93,7 +69,7 @@ if (empty($unmatched)) {
     echo '<p>' . get_string('unmatchedusersdesc', 'webexmeetings') . '</p>';
     
     // Get all Moodle users for select
-    $enrolled_users = get_enrolled_users($context, '', 0, 'u.id, u.firstname, u.lastname, u.email');
+    $enrolled_users = get_enrolled_users($context, '', 0, 'u.id, u.firstname, u.lastname, u.email', null, 0, 0, true);
     $options = array();
     foreach ($enrolled_users as $u) {
         $options[$u->id] = fullname($u) . ' (' . $u->email . ')';
@@ -125,8 +101,8 @@ if (empty($unmatched)) {
         $form .= html_writer::end_tag('form');
         
         $table->data[] = array(
-            $u->webex_email,
-            $u->webex_displayname,
+            s($u->webex_email),
+            s($u->webex_displayname),
             $u->join_time ? userdate($u->join_time, '%H:%M:%S %d/%m/%Y') : '-',
             $u->duration ? format_time($u->duration) : '-',
             $form

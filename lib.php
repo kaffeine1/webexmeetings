@@ -35,6 +35,7 @@ function webexmeetings_add_instance($data, $mform = null) {
     global $DB, $USER;
     
     $data->timecreated = time();
+    \mod_webexmeetings\local\recording_disclaimer::apply_defaults($data);
     $data->timemodified = time();
     
     // Set host email from current user
@@ -43,24 +44,17 @@ function webexmeetings_add_instance($data, $mform = null) {
     // Set site URL from plugin settings
     $data->siteurl = get_config('mod_webexmeetings', 'site_url');
     
-    // Create Webex meeting via API
-    $webex_api = new \mod_webexmeetings\external\webex_api();
     try {
-        $meeting_info = $webex_api->create_meeting($data);
-        
-        if ($meeting_info) {
-            debugging('Webex API response: ' . json_encode($meeting_info), DEBUG_DEVELOPER);
-            $data->meeting_id = $meeting_info->id;
-            $data->join_url = $meeting_info->webLink ?? '';
-            if (isset($meeting_info->password)) {
-                $data->password = $meeting_info->password;
-            }
-        }
-    } catch (\Exception $e) {
-        $msg = webexmeetings_extract_error_message($e);
-        debugging('Webex API create_meeting error: ' . $msg, DEBUG_DEVELOPER);
-        \core\notification::add(get_string('meetingcreationerror', 'webexmeetings', $msg),
-            \core\output\notification::NOTIFY_ERROR);
+        $meeting_info = (new \mod_webexmeetings\external\webex_api())->create_meeting($data);
+    } catch (\Throwable $e) {
+        throw new \moodle_exception('meetingcreationerror', 'webexmeetings', '',
+            webexmeetings_extract_error_message($e));
+    }
+    $data->meeting_id = $meeting_info->id;
+    $data->join_url = $meeting_info->webLink;
+    $data->host_email = $meeting_info->hostEmail ?? $data->host_email;
+    if (isset($meeting_info->password)) {
+        $data->password = $meeting_info->password;
     }
     
     $data->id = $DB->insert_record('webexmeetings', $data);
@@ -89,23 +83,22 @@ function webexmeetings_update_instance($data, $mform = null) {
     $data->id = $data->instance;
     
     // Preserve host_email and meeting_id
-    $existing = $DB->get_record('webexmeetings', ['id' => $data->id], 'host_email, meeting_id, siteurl, password');
+    $existing = $DB->get_record('webexmeetings', ['id' => $data->id],
+        'host_email, meeting_id, siteurl, password', MUST_EXIST);
     $data->host_email = $existing->host_email;
     $data->siteurl = $existing->siteurl;
     
     // Update Webex meeting via API
-    if (!empty($existing->meeting_id)) {
-        $data->meeting_id = $existing->meeting_id;
-        $data->password = $existing->password;
-        $webex_api = new \mod_webexmeetings\external\webex_api();
-        try {
-            $webex_api->update_meeting($data);
-        } catch (\Exception $e) {
-            $msg = webexmeetings_extract_error_message($e);
-            debugging('Webex API update_meeting error: ' . $msg, DEBUG_DEVELOPER);
-            \core\notification::add(get_string('meetingupdateerror', 'webexmeetings', $msg),
-                \core\output\notification::NOTIFY_ERROR);
-        }
+    if (empty($existing->meeting_id)) {
+        throw new \moodle_exception('nomeetingid', 'webexmeetings');
+    }
+    $data->meeting_id = $existing->meeting_id;
+    $data->password = !empty($data->meeting_password) ? $data->meeting_password : $existing->password;
+    try {
+        (new \mod_webexmeetings\external\webex_api())->update_meeting($data);
+    } catch (\Throwable $e) {
+        throw new \moodle_exception('meetingupdateerror', 'webexmeetings', '',
+            webexmeetings_extract_error_message($e));
     }
     
     return $DB->update_record('webexmeetings', $data);
@@ -126,14 +119,11 @@ function webexmeetings_delete_instance($id) {
     
     // Delete Webex meeting via API
     if ($meeting->meeting_id) {
-        $webex_api = new \mod_webexmeetings\external\webex_api();
         try {
-            $webex_api->delete_meeting($meeting->meeting_id);
-        } catch (\Exception $e) {
-            $msg = webexmeetings_extract_error_message($e);
-            debugging('Webex API delete_meeting error: ' . $msg, DEBUG_DEVELOPER);
-            \core\notification::add(get_string('meetingdeleteerror', 'webexmeetings', $msg),
-                \core\output\notification::NOTIFY_ERROR);
+            (new \mod_webexmeetings\external\webex_api())->delete_meeting($meeting->meeting_id);
+        } catch (\Throwable $e) {
+            throw new \moodle_exception('meetingdeleteerror', 'webexmeetings', '',
+                webexmeetings_extract_error_message($e));
         }
     }
     
@@ -279,33 +269,34 @@ function webexmeetings_log_attendance($meetingid, $userid, $action, $sessionid =
 function webexmeetings_update_attendance_summary($meetingid, $userid) {
     global $DB;
     
-    // Calculate total attendance from all sessions
-    $sql = "SELECT MIN(join_time) as first_join, 
-                   MAX(leave_time) as last_leave,
-                   SUM(duration) as total_duration
-            FROM {webexmeetings_sessions}
-            WHERE meetingid = ? AND userid = ? AND leave_time > 0";
-    
-    $stats = $DB->get_record_sql($sql, array($meetingid, $userid));
-    
-    if ($stats && $stats->first_join) {
-        if ($attendance = $DB->get_record('webexmeetings_attendance', 
-            array('meetingid' => $meetingid, 'userid' => $userid))) {
-            // Update existing record
-            $attendance->join_time = $stats->first_join;
-            $attendance->leave_time = $stats->last_leave;
-            $attendance->duration = $stats->total_duration;
-            $DB->update_record('webexmeetings_attendance', $attendance);
-        } else {
-            // Create new record
-            $attendance = new stdClass();
-            $attendance->meetingid = $meetingid;
-            $attendance->userid = $userid;
-            $attendance->join_time = $stats->first_join;
-            $attendance->leave_time = $stats->last_leave;
-            $attendance->duration = $stats->total_duration;
-            $DB->insert_record('webexmeetings_attendance', $attendance);
+    // Count the union of intervals, not overlapping device connections twice.
+    $sessions = $DB->get_records_select('webexmeetings_sessions',
+        'meetingid = ? AND userid = ? AND join_time > 0 AND leave_time > join_time',
+        [$meetingid, $userid], 'join_time ASC, leave_time ASC');
+    if (!$sessions) {
+        return;
+    }
+    $first = reset($sessions);
+    $from = (int)$first->join_time;
+    $until = (int)$first->leave_time;
+    $duration = 0;
+    foreach ($sessions as $session) {
+        if ($session->join_time > $until) {
+            $duration += $until - $from;
+            $from = (int)$session->join_time;
         }
+        $until = max($until, (int)$session->leave_time);
+    }
+    $duration += $until - $from;
+    $attendance = $DB->get_record('webexmeetings_attendance',
+        ['meetingid' => $meetingid, 'userid' => $userid]);
+    $record = (object)['meetingid' => $meetingid, 'userid' => $userid,
+        'join_time' => (int)$first->join_time, 'leave_time' => $until, 'duration' => $duration];
+    if ($attendance) {
+        $record->id = $attendance->id;
+        $DB->update_record('webexmeetings_attendance', $record);
+    } else {
+        $DB->insert_record('webexmeetings_attendance', $record);
     }
 }
 
@@ -349,10 +340,10 @@ function webexmeetings_get_user_sessions($meetingid, $userid) {
 /**
  * Extract an error message from a Webex API exception.
  *
- * @param \Exception $e
+ * @param \Throwable $e
  * @return string
  */
-function webexmeetings_extract_error_message(\Exception $e) {
+function webexmeetings_extract_error_message(\Throwable $e) {
     $candidates = [$e->getMessage()];
     if (property_exists($e, 'debuginfo') && !empty($e->debuginfo)) {
         $candidates[] = $e->debuginfo;

@@ -69,12 +69,25 @@ if ($ADMIN->fulltree) {
         ''
     ));
     
-    // Refresh Token
-    $settings->add(new admin_setting_configpasswordunmask(
-        'mod_webexmeetings/refresh_token',
-        get_string('refreshtoken', 'webexmeetings'),
-        get_string('refreshtoken_desc', 'webexmeetings'),
-        ''
+    $settings->add(new admin_setting_configselect(
+        'mod_webexmeetings/oauth_scope_profile',
+        get_string('oauthscopeprofile', 'webexmeetings'),
+        '',
+        'host',
+        [
+            'host' => get_string('oauthscopehost', 'webexmeetings'),
+            'organization' => get_string('oauthscopeorganization', 'webexmeetings'),
+        ]
+    ));
+
+    // Never include the rotating refresh token in a settings form that may remain open in another tab.
+    $settings->add(new admin_setting_heading(
+        'mod_webexmeetings/oauthconnection',
+        get_string('oauthmanage', 'webexmeetings'),
+        html_writer::tag('div', html_writer::tag('strong', get_string('oauthredirecturi', 'webexmeetings')) . ': ' .
+            html_writer::tag('code', s(\mod_webexmeetings\local\oauth::redirect_uri()->out(false)), ['class' => 'text-break'])) .
+        html_writer::link(\mod_webexmeetings\local\oauth::management_url(), get_string('oauthmanage', 'webexmeetings'),
+            ['class' => 'btn btn-secondary'])
     ));
     
     // Site URL
@@ -105,6 +118,10 @@ if ($ADMIN->fulltree) {
         $testconnectionbutton
     ));
     
+    $settings->add(new admin_setting_configcheckbox('mod_webexmeetings/personalized_join',
+        get_string('personalizedjoin', 'mod_webexmeetings'),
+        get_string('personalizedjoin_desc', 'mod_webexmeetings'), 0));
+
     // Heading: Default meeting settings
     $settings->add(new admin_setting_heading(
         'mod_webexmeetings/defaultsheading',
@@ -137,6 +154,16 @@ if ($ADMIN->fulltree) {
         $duroptions
     ));
     
+    foreach (['participants', 'assignees'] as $audience) {
+        $field = 'disclaimer_' . $audience;
+        $settings->add(new admin_setting_configcheckbox('mod_webexmeetings/default_' . $field,
+            get_string($field, 'mod_webexmeetings'), get_string('disclaimerdefaults_desc', 'mod_webexmeetings'), 0));
+    }
+    $settings->add(new admin_setting_configtextarea('mod_webexmeetings/recording_disclaimer_text',
+        get_string('recordingdisclaimertext', 'mod_webexmeetings'),
+        get_string('recordingdisclaimertext_desc', 'mod_webexmeetings'),
+        get_string('recordingdisclaimerdefault', 'mod_webexmeetings'), PARAM_TEXT));
+
     // Heading: Sync settings
     $settings->add(new admin_setting_heading(
         'mod_webexmeetings/syncheading',

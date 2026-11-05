@@ -97,6 +97,13 @@ class mod_webexmeetings_mod_form extends moodleform_mod {
         $mform->addHelpButton('min_duration', 'minduration', 'webexmeetings');
         $mform->disabledIf('min_duration', 'track_attendance');
         
+        foreach (['participants', 'assignees'] as $audience) {
+            $field = 'disclaimer_' . $audience;
+            $mform->addElement('selectyesno', $field, get_string($field, 'mod_webexmeetings'));
+            $mform->setDefault($field, (int)(bool)get_config('mod_webexmeetings', 'default_' . $field));
+            $mform->addHelpButton($field, $field, 'mod_webexmeetings');
+        }
+
         // Standard course module elements
         $this->standard_coursemodule_elements();
         
@@ -117,6 +124,9 @@ class mod_webexmeetings_mod_form extends moodleform_mod {
         // Validate times
         if ($data['end_time'] <= $data['start_time']) {
             $errors['end_time'] = get_string('endtimebeforestart', 'webexmeetings');
+        } else if ($data['end_time'] - $data['start_time'] < 600 ||
+                $data['end_time'] - $data['start_time'] > DAYSECS) {
+            $errors['end_time'] = get_string('invalidmeetingduration', 'webexmeetings');
         }
         
         return $errors;

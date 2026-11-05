@@ -53,61 +53,12 @@ class webex_api {
     }
     
     /**
-     * Get access token.
-     *
-     * Webex supports multiple authentication methods:
-     * - Personal access token, for temporary testing only.
-     * - OAuth2 with refresh token, for production use.
+     * Get a shared OAuth access token or the configured legacy personal token.
      *
      * @return string
      */
     private function get_access_token() {
-        $auth_method = get_config('mod_webexmeetings', 'auth_method');
-        
-        if ($auth_method !== 'oauth') {
-            $personal_token = get_config('mod_webexmeetings', 'personal_token');
-            if (empty($personal_token)) {
-                throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
-            }
-
-            $this->access_token = trim($personal_token);
-            return $this->access_token;
-        }
-
-        $client_id = get_config('mod_webexmeetings', 'client_id');
-        $client_secret = get_config('mod_webexmeetings', 'client_secret');
-        $refresh_token = get_config('mod_webexmeetings', 'refresh_token');
-        
-        if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
-            throw new \moodle_exception('missingcredentials', 'mod_webexmeetings');
-        }
-        
-        $token_url = self::API_BASE_URL . '/access_token';
-        $params = array(
-            'grant_type' => 'refresh_token',
-            'client_id' => trim($client_id),
-            'client_secret' => trim($client_secret),
-            'refresh_token' => trim($refresh_token),
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader(array('Content-Type: application/x-www-form-urlencoded'));
-        $this->rate_limit_check();
-        $response = $curl->post($token_url, http_build_query($params));
-        $data = json_decode($response);
-        
-        if (!isset($data->access_token)) {
-            // Never expose or persist the raw OAuth response because it may contain credentials.
-            throw new \moodle_exception('failedtogetaccesstoken', 'mod_webexmeetings');
-        }
-
-        $this->access_token = trim($data->access_token);
-        
-        // Webex may rotate the refresh token during renewal.
-        if (isset($data->refresh_token) && !empty($data->refresh_token)) {
-            set_config('refresh_token', trim($data->refresh_token), 'mod_webexmeetings');
-        }
-        
+        $this->access_token = (new \mod_webexmeetings\local\oauth())->access_token();
         return $this->access_token;
     }
 
@@ -125,6 +76,90 @@ class webex_api {
         }
         $this->last_api_call = microtime(true);
     }
+
+    /**
+     * Make a Webex request and keep response headers for Link-based pagination.
+     *
+     * @param string $method HTTP method
+     * @param string $url Absolute Webex API URL
+     * @param array|null $data JSON request body
+     * @return array{body: mixed, headers: array}
+     */
+    protected function request(string $method, string $url, ?array $data = null): array {
+        $curl = new \curl(['debug' => false]);
+        $curl->setHeader([
+            'Authorization: Bearer ' . $this->access_token,
+            'Accept: application/json',
+            'Content-Type: application/json',
+        ]);
+        $options = [
+            'CURLOPT_FOLLOWLOCATION' => false,
+            'CURLOPT_CONNECTTIMEOUT' => 10,
+            'CURLOPT_TIMEOUT' => 30,
+            'CURLOPT_SSL_VERIFYPEER' => true,
+            'CURLOPT_SSL_VERIFYHOST' => 2,
+        ];
+        $this->rate_limit_check();
+        switch ($method) {
+            case 'GET':
+                $response = $curl->get($url, [], $options);
+                break;
+            case 'POST':
+                $response = $curl->post($url, json_encode($data), $options);
+                break;
+            case 'PUT':
+                $response = $curl->put($url, json_encode($data), $options);
+                break;
+            case 'DELETE':
+                $response = $curl->delete($url, [], $options);
+                break;
+            default:
+                throw new \coding_exception('Unsupported Webex request method');
+        }
+        $status = (int)($curl->get_info()['http_code'] ?? 0);
+        if ($response === false || $status < 200 || $status >= 300) {
+            throw new \Exception('Webex API request failed (HTTP ' . $status . ')');
+        }
+        $body = ($response === '' || $response === null) ? null : json_decode($response);
+        if ($response !== '' && $response !== null && json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception('Webex API returned an invalid response');
+        }
+        return ['body' => $body, 'headers' => $curl->getResponse()];
+    }
+
+    /** @return array Paginated Webex items from one trusted endpoint. */
+    private function list_items(string $url, string $path): array {
+        $items = [];
+        $seen = [];
+        while ($url !== null) {
+            $parts = parse_url($url);
+            if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' ||
+                    ($parts['host'] ?? '') !== 'webexapis.com' || ($parts['path'] ?? '') !== $path ||
+                    isset($parts['port']) || isset($parts['user']) || isset($parts['pass']) || isset($seen[$url]) ||
+                    count($seen) >= 100) {
+                throw new \Exception('Invalid Webex pagination URL');
+            }
+            $seen[$url] = true;
+            $page = $this->request('GET', $url);
+            if (!is_object($page['body']) || !isset($page['body']->items) || !is_array($page['body']->items)) {
+                throw new \Exception('Webex API returned an invalid list');
+            }
+            $items = array_merge($items, $page['body']->items);
+            $url = null;
+            foreach ($page['headers'] as $name => $value) {
+                if (strcasecmp($name, 'link') !== 0) {
+                    continue;
+                }
+                foreach ((array)$value as $header) {
+                    if (preg_match('/<([^>]+)>;\s*rel="?next"?/i', $header, $matches)) {
+                        $url = $matches[1];
+                        break 2;
+                    }
+                }
+            }
+        }
+        return $items;
+    }
     
     /**
      * Create a Webex meeting
@@ -136,10 +171,10 @@ class webex_api {
         $url = self::API_BASE_URL . '/meetings';
         
         // Convert Moodle times to ISO format
-        $start_time = date('Y-m-d\TH:i:s\Z', $meeting_data->start_time);
+        $start_time = gmdate('Y-m-d\TH:i:s\Z', $meeting_data->start_time);
         $end_time = isset($meeting_data->end_time) && $meeting_data->end_time ? 
-                    date('Y-m-d\TH:i:s\Z', $meeting_data->end_time) : 
-                    date('Y-m-d\TH:i:s\Z', $meeting_data->start_time + 3600);
+                    gmdate('Y-m-d\TH:i:s\Z', $meeting_data->end_time) :
+                    gmdate('Y-m-d\TH:i:s\Z', $meeting_data->start_time + 3600);
         
         $meeting = array(
             'title' => $meeting_data->name,
@@ -171,28 +206,11 @@ class webex_api {
             $meeting['hostEmail'] = $api_host_email;
         }
 
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token,
-            'Content-Type: application/json'
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader($headers);
-        $this->rate_limit_check();
-        $response = $curl->post($url, json_encode($meeting));
-        $result = json_decode($response);
-        
-        if (isset($result->id)) {
-            return $result;
+        $result = $this->request('POST', $url, $meeting)['body'];
+        if (!is_object($result) || empty($result->id) || empty($result->webLink)) {
+            throw new \Exception('Webex API did not return a meeting ID and join link');
         }
-
-        $message = isset($result->message) ? $result->message : 'Unknown error';
-        if (isset($result->errors) && is_array($result->errors)) {
-            $message = implode('; ', array_map(function($err) {
-                return $err->description ?? '';
-            }, $result->errors));
-        }
-        throw new \Exception('Failed to create Webex meeting: ' . $message);
+        return $result;
     }
     
     /**
@@ -206,34 +224,19 @@ class webex_api {
             return false;
         }
 
-        $url = self::API_BASE_URL . '/meetings/' . $meeting_data->meeting_id;
+        $url = self::API_BASE_URL . '/meetings/' . rawurlencode($meeting_data->meeting_id);
         
         $update_data = array(
             'title' => $meeting_data->name,
-            'start' => date('Y-m-d\TH:i:s\Z', $meeting_data->start_time),
-            'end' => date('Y-m-d\TH:i:s\Z', $meeting_data->end_time),
+            'start' => gmdate('Y-m-d\TH:i:s\Z', $meeting_data->start_time),
+            'end' => gmdate('Y-m-d\TH:i:s\Z', $meeting_data->end_time),
         );
 
-        if (!empty($meeting_data->password)) {
-            $update_data['password'] = $meeting_data->password;
-        }
-        
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token,
-            'Content-Type: application/json'
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader($headers);
-        $this->rate_limit_check();
-        $response = $curl->put($url, json_encode($update_data));
-
-        $result = json_decode($response);
-        if ($response === false || (isset($result->message) && !isset($result->id))) {
-            $message = isset($result->message) ? $result->message : 'Unknown error';
-            throw new \Exception('Failed to update Webex meeting: ' . $message);
+        if (!empty($meeting_data->meeting_password)) {
+            $update_data['password'] = $meeting_data->meeting_password;
         }
 
+        $this->request('PUT', $url, $update_data);
         return true;
     }
     
@@ -244,210 +247,77 @@ class webex_api {
      * @return bool
      */
     public function delete_meeting($meeting_id) {
-        $url = self::API_BASE_URL . '/meetings/' . $meeting_id;
-        
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader($headers);
-        $this->rate_limit_check();
-        $response = $curl->delete($url);
-
-        $result = json_decode($response);
-        if ($response === false || (isset($result->message) && !isset($result->id))) {
-            $message = isset($result->message) ? $result->message : 'Unknown error';
-            throw new \Exception('Failed to delete Webex meeting: ' . $message);
-        }
-
+        $url = self::API_BASE_URL . '/meetings/' . rawurlencode($meeting_id);
+        $this->request('DELETE', $url);
         return true;
     }
     
     /**
      * Get attendance/participants for a meeting
-     * NOTE: Webex participant data may not be available until ~24h after meeting ends
-     *
-     * @param string $meeting_id
+     * @param string $meeting_id Scheduled Webex meeting ID
+     * @param int $local_meeting_id Moodle activity ID for unmatched participants
+     * @param int $start_time Scheduled start timestamp
+     * @param int $end_time Scheduled end timestamp
      * @return array|false
      */
-    public function get_attendance($meeting_id) {
-        // Use meetingParticipants endpoint
-        $url = self::API_BASE_URL . '/meetingParticipants?meetingId=' . urlencode($meeting_id);
-        
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token,
-            'Content-Type: application/json'
-        );
-        
-        $all_items = array();
-        
-        // Paginate through results
-        while ($url) {
-            $curl = new \curl();
-            $curl->setHeader($headers);
-            $this->rate_limit_check();
-            $response = $curl->get($url);
-            
-            $result = json_decode($response);
-            
-            if (isset($result->message)) {
-                if (strpos($result->message, 'not found') !== false ||
-                    strpos($result->message, 'No data') !== false) {
-                    return false;
-                }
-                throw new \Exception('Errore API Webex: ' . $result->message);
-            }
-            
-            if (isset($result->items) && !empty($result->items)) {
-                $all_items = array_merge($all_items, $result->items);
-            }
-            
-            // Check for pagination
-            $url = null;
-            $info = $curl->get_info();
-            // Webex uses Link headers for pagination
-            if (isset($info['link'])) {
-                if (preg_match('/<([^>]+)>;\s*rel="next"/', $info['link'], $matches)) {
-                    $url = $matches[1];
-                }
-            }
+    public function get_attendance($meeting_id, int $local_meeting_id, int $start_time, int $end_time) {
+        $scheduled = $this->get_meeting($meeting_id);
+        if (!$scheduled) {
+            throw new \Exception('Webex API did not return the scheduled meeting');
         }
-        
-        if (empty($all_items)) {
+        $seriesid = $scheduled->meetingSeriesId ?? $meeting_id;
+        $from = max($start_time - DAYSECS, time() - 30 * DAYSECS);
+        $to = max($end_time, time()) + DAYSECS;
+        $query = http_build_query([
+            'meetingSeriesId' => $seriesid,
+            'meetingType' => 'meeting',
+            'from' => gmdate('Y-m-d\TH:i:s\Z', $from),
+            'to' => gmdate('Y-m-d\TH:i:s\Z', $to),
+            'max' => 100,
+        ], '', '&', PHP_QUERY_RFC3986);
+        $instances = $this->list_items(self::API_BASE_URL . '/meetings?' . $query, '/v1/meetings');
+        $all_items = [];
+        foreach ($instances as $instance) {
+            if (($instance->meetingType ?? '') !== 'meeting' ||
+                    ($instance->meetingSeriesId ?? '') !== $seriesid || empty($instance->id)) {
+                continue;
+            }
+            $url = self::API_BASE_URL . '/meetingParticipants?meetingId=' . rawurlencode($instance->id);
+            $all_items = array_merge($all_items, $this->list_items($url, '/v1/meetingParticipants'));
+        }
+        if (!$all_items) {
             return false;
         }
-        
-        return $this->process_attendance_records($all_items, $meeting_id);
+
+        return $this->process_attendance_records($all_items, $local_meeting_id);
     }
     
     /**
      * Process attendance records from Webex API
      *
      * @param array $records
-     * @param string $meetingid
+     * @param int $meetingid Moodle activity ID
      * @return array
      */
     private function process_attendance_records($records, $meetingid) {
-        global $DB;
-        
-        $processed = array();
-        $unmatched = array();
-        
+        $processed = [];
         foreach ($records as $record) {
-            // Try to match the user
-            $user = $this->match_webex_user($record);
-            
-            if ($user) {
-                $attendance = new \stdClass();
-                $attendance->userid = $user->id;
-                $attendance->email = $record->email ?? '';
-                $attendance->display_name = $record->displayName ?? '';
-                $attendance->host = $record->host ?? false;
-                
-                // Process join/leave times
-                $attendance->sessions = array();
-                if (isset($record->devices) && is_array($record->devices)) {
-                    foreach ($record->devices as $device) {
-                        $session = new \stdClass();
-                        $session->join_time = isset($device->joinedTime) ? strtotime($device->joinedTime) : 0;
-                        $session->leave_time = isset($device->leftTime) ? strtotime($device->leftTime) : 0;
-                        $session->duration = ($session->leave_time && $session->join_time) ?
-                            ($session->leave_time - $session->join_time) : 0;
-                        $attendance->sessions[] = $session;
-                    }
-                } else {
-                    // Single session from joinedTime/leftTime at top level
-                    $session = new \stdClass();
-                    $session->join_time = isset($record->joinedTime) ? strtotime($record->joinedTime) : 0;
-                    $session->leave_time = isset($record->leftTime) ? strtotime($record->leftTime) : 0;
-                    $session->duration = ($session->leave_time && $session->join_time) ?
-                        ($session->leave_time - $session->join_time) : 0;
-                    if ($session->join_time) {
-                        $attendance->sessions[] = $session;
-                    }
-                }
-                
-                $attendance->total_duration = 0;
-                foreach ($attendance->sessions as $s) {
-                    $attendance->total_duration += $s->duration;
-                }
-                
-                $processed[] = $attendance;
-            } else {
-                // Unmatched user
-                $unmatched_user = new \stdClass();
-                $unmatched_user->meetingid = $meetingid;
-                $unmatched_user->webex_email = $record->email ?? '';
-                $unmatched_user->webex_displayname = $record->displayName ?? '';
-                $unmatched_user->webex_id = $record->id ?? '';
-                $unmatched_user->timecreated = time();
-                
-                // Get join/leave times
-                if (isset($record->joinedTime)) {
-                    $unmatched_user->join_time = strtotime($record->joinedTime);
-                } else {
-                    $unmatched_user->join_time = 0;
-                }
-                if (isset($record->leftTime)) {
-                    $unmatched_user->leave_time = strtotime($record->leftTime);
-                } else {
-                    $unmatched_user->leave_time = 0;
-                }
-                $unmatched_user->duration = ($unmatched_user->leave_time && $unmatched_user->join_time) ?
-                    ($unmatched_user->leave_time - $unmatched_user->join_time) : 0;
-                
-                // Check if already exists
-                $existing = $DB->get_record('webexmeetings_unmatched', array(
-                    'meetingid' => $meetingid,
-                    'webex_email' => $unmatched_user->webex_email
-                ));
-                
-                if (!$existing) {
-                    $DB->insert_record('webexmeetings_unmatched', $unmatched_user);
-                } else {
-                    $unmatched_user->id = $existing->id;
-                    $DB->update_record('webexmeetings_unmatched', $unmatched_user);
-                }
-                
-                $unmatched[] = $unmatched_user;
+            $sessions = \mod_webexmeetings\local\attendance_mapping::sessions($record);
+            $user = \mod_webexmeetings\local\attendance_mapping::match($record, (int)$meetingid);
+            if (!$user) {
+                \mod_webexmeetings\local\attendance_mapping::remember($record, (int)$meetingid, $sessions);
+                continue;
             }
+            $processed[] = (object)[
+                'userid' => $user->id,
+                'email' => $record->email ?? '',
+                'display_name' => $record->displayName ?? '',
+                'host' => $record->host ?? false,
+                'sessions' => $sessions,
+                'total_duration' => array_sum(array_column($sessions, 'duration')),
+            ];
         }
-        
-        if (!empty($unmatched)) {
-            debugging('Found ' . count($unmatched) . ' unmatched Webex users for meeting ' . $meetingid, DEBUG_DEVELOPER);
-        }
-        
         return $processed;
-    }
-    
-    /**
-     * Match Webex user with Moodle user
-     *
-     * @param stdClass $webex_user
-     * @return stdClass|false
-     */
-    private function match_webex_user($webex_user) {
-        global $DB;
-        
-        // Try to match by email
-        if (!empty($webex_user->email)) {
-            $user = $DB->get_record('user', array('email' => $webex_user->email));
-            if ($user) {
-                return $user;
-            }
-        }
-        
-        // Try to match by username (email prefix)
-        if (!empty($webex_user->email)) {
-            $username = strtolower(explode('@', $webex_user->email)[0]);
-            $user = $DB->get_record('user', array('username' => $username));
-            if ($user) {
-                return $user;
-            }
-        }
-        
-        return false;
     }
     
     /**
@@ -464,7 +334,7 @@ class webex_api {
         $rrule = "FREQ={$freq};INTERVAL=1";
         
         if (!empty($meeting_data->recurrence_end)) {
-            $rrule .= ";UNTIL=" . date('Ymd\THis\Z', $meeting_data->recurrence_end);
+            $rrule .= ";UNTIL=" . gmdate('Ymd\THis\Z', $meeting_data->recurrence_end);
         } else {
             $rrule .= ";COUNT=26"; // Default to 6 months of weekly meetings
         }
@@ -479,29 +349,76 @@ class webex_api {
      * @return stdClass|false
      */
     public function get_meeting($meeting_id) {
-        $url = self::API_BASE_URL . '/meetings/' . $meeting_id;
-        
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token,
-            'Content-Type: application/json'
-        );
-        
-        $curl = new \curl();
-        $curl->setHeader($headers);
-        $this->rate_limit_check();
-        $response = $curl->get($url);
-        
-        $result = json_decode($response);
-        
-        if (isset($result->id)) {
+        $url = self::API_BASE_URL . '/meetings/' . rawurlencode($meeting_id);
+        $result = $this->request('GET', $url)['body'];
+        if (is_object($result) && isset($result->id)) {
             return $result;
         }
         
         return false;
     }
 
+    /** Generate a short-lived attendee link using only the authenticated user's identity. */
+    public function get_join_link(string $meetingid, string $email, string $displayname): string {
+        if (trim($meetingid) === '') {
+            throw new \moodle_exception('nomeetingid', 'mod_webexmeetings');
+        }
+        if (!validate_email($email) || preg_match('/@guest\.webex\.localhost$/i', $email) ||
+                trim($displayname) === '' || \core_text::strlen($displayname) > 128 ||
+                preg_match('/[\x00-\x1f\x7f]/', $displayname)) {
+            throw new \moodle_exception('participantidentityunavailable', 'mod_webexmeetings');
+        }
+        $data = ['meetingId' => $meetingid, 'joinDirectly' => false, 'expirationMinutes' => 5,
+            'email' => $email, 'displayName' => $displayname];
+        $config = \mod_webexmeetings\local\oauth::configuration();
+        if (($config->oauth_scope_profile ?? 'host') === 'organization' && !empty($config->api_host_email)) {
+            $data['hostEmail'] = $config->api_host_email;
+        }
+        $response = $this->request('POST', self::API_BASE_URL . '/meetings/join', $data)['body'];
+        $link = is_object($response) ? ($response->joinLink ?? null) : null;
+        if (is_object($response) && isset($response->startLink) && $response->startLink === $link) {
+            throw new \moodle_exception('personaljoinunavailable', 'mod_webexmeetings');
+        }
+        return self::validated_meeting_link($link, 'personaljoinunavailable');
+    }
+
     /**
-     * Test the API connection
+     * Generate a short-lived host link. Never persist this bearer-style URL.
+     *
+     * @param string $meetingid ID from the local activity, not user input.
+     * @return string Validated Webex HTTPS start URL.
+     */
+    public function get_start_link(string $meetingid): string {
+        if (trim($meetingid) === '') {
+            throw new \moodle_exception('nomeetingid', 'mod_webexmeetings');
+        }
+        $data = ['meetingId' => $meetingid, 'joinDirectly' => false, 'expirationMinutes' => 5];
+        $config = \mod_webexmeetings\local\oauth::configuration();
+        if (($config->oauth_scope_profile ?? 'host') === 'organization' && !empty($config->api_host_email)) {
+            $data['hostEmail'] = $config->api_host_email;
+        }
+        $response = $this->request('POST', self::API_BASE_URL . '/meetings/join', $data)['body'];
+        $link = is_object($response) ? ($response->startLink ?? null) : null;
+        return self::validated_meeting_link($link, 'startmeetingunavailable');
+    }
+
+    /** Validate bearer-style destinations without logging or persisting them. */
+    private static function validated_meeting_link($link, string $errorcode): string {
+        if (!is_string($link) || str_contains($link, '\\') || preg_match('/[\x00-\x20\x7f]/', $link)) {
+            throw new \moodle_exception($errorcode, 'mod_webexmeetings');
+        }
+        $parts = parse_url($link);
+        $host = strtolower($parts['host'] ?? '');
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' ||
+                !str_ends_with($host, '.webex.com') || isset($parts['user']) || isset($parts['pass']) ||
+                isset($parts['port']) || isset($parts['fragment'])) {
+            throw new \moodle_exception($errorcode, 'mod_webexmeetings');
+        }
+        return $link;
+    }
+
+    /**
+     * Test the API connection.
      *
      * @return bool
      * @throws \Exception on failure
@@ -509,22 +426,11 @@ class webex_api {
     public function test_connection() {
         $url = self::API_BASE_URL . '/people/me';
 
-        $headers = array(
-            'Authorization: Bearer ' . $this->access_token,
-            'Content-Type: application/json'
-        );
-
-        $curl = new \curl();
-        $curl->setHeader($headers);
-        $this->rate_limit_check();
-        $response = $curl->get($url);
-        $result = json_decode($response);
-
-        if (isset($result->id)) {
+        $result = $this->request('GET', $url)['body'];
+        if (is_object($result) && isset($result->id)) {
+            $this->list_items(self::API_BASE_URL . '/meetings?meetingType=meetingSeries&max=1', '/v1/meetings');
             return true;
         }
-
-        $message = isset($result->message) ? $result->message : 'Unknown error';
-        throw new \Exception('Webex API connection failed: ' . $message);
+        throw new \Exception('Webex API connection returned an invalid profile');
     }
 }

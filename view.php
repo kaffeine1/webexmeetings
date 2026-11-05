@@ -86,16 +86,10 @@ echo '<p><strong>' . get_string('endtime', 'webexmeetings') . ':</strong> ' .
 
 // Meeting status
 $now = time();
-if ($now < $webexmeeting->start_time) {
-    $status = get_string('meetingnotstarted', 'webexmeetings');
-    $statusclass = 'badge-info';
-} else if ($now >= $webexmeeting->start_time && $now <= $webexmeeting->end_time) {
-    $status = get_string('meetinginprogress', 'webexmeetings');
-    $statusclass = 'badge-success';
-} else {
-    $status = get_string('meetingended', 'webexmeetings');
-    $statusclass = 'badge-secondary';
-}
+$ended = \mod_webexmeetings\local\meeting_access::has_ended($webexmeeting, $now);
+$statuskey = \mod_webexmeetings\local\meeting_access::status($webexmeeting, $now);
+$status = get_string($statuskey, 'webexmeetings');
+$statusclass = $ended ? 'badge-secondary' : ($statuskey === 'meetinginprogress' ? 'badge-success' : 'badge-info');
 echo '<p><strong>' . get_string('status') . ':</strong> <span class="badge ' . $statusclass . '">' . $status . '</span></p>';
 
 // Recurring
@@ -103,20 +97,24 @@ if ($webexmeeting->recurring) {
     echo '<p><span class="badge badge-info">' . get_string('recurringmeeting', 'webexmeetings') . '</span></p>';
 }
 
+if (!$ended && !empty($webexmeeting->meeting_id) && \mod_webexmeetings\local\meeting_host::can_start($context)) {
+    $starturl = new moodle_url('/mod/webexmeetings/start.php', ['id' => $cm->id]);
+    echo $OUTPUT->single_button($starturl, get_string('startmeetingashost', 'webexmeetings'), 'post');
+}
+
 // Join button
-if (!empty($webexmeeting->join_url)) {
+if ($ended) {
+    echo \html_writer::tag('button', get_string('meetingaccessclosed', 'mod_webexmeetings'),
+        ['type' => 'button', 'class' => 'btn btn-secondary', 'disabled' => 'disabled', 'aria-disabled' => 'true']);
+} else if (!empty($webexmeeting->join_url)) {
     echo '<div class="mt-3">';
-    echo '<a href="' . htmlspecialchars($webexmeeting->join_url) . '" target="_blank" ' .
+    $joinurl = new moodle_url('/mod/webexmeetings/join.php', ['id' => $cm->id]);
+    echo '<a href="' . $joinurl->out() . '" target="_blank" ' .
          'class="btn btn-primary btn-lg" rel="noopener noreferrer">';
     echo '<i class="fa fa-video-camera"></i> ' . get_string('joinmeeting', 'webexmeetings');
     echo '</a>';
     echo '</div>';
     
-    // Password display
-    if (!empty($webexmeeting->password)) {
-        echo '<p class="mt-2 text-muted"><small>' . get_string('meetingpassword', 'webexmeetings') . ': ' .
-             '<span class="font-weight-bold">' . htmlspecialchars($webexmeeting->password) . '</span></small></p>';
-    }
 } else {
     echo '<div class="alert alert-warning mt-3">' . get_string('nojoinurl', 'webexmeetings') . '</div>';
 }
@@ -175,8 +173,7 @@ if (has_capability('mod/webexmeetings:viewattendance', $context)) {
     // Sync and unmatched users buttons
     if (has_capability('mod/webexmeetings:syncattendance', $context)) {
         $syncurl = new moodle_url('/mod/webexmeetings/sync.php', array('id' => $cm->id));
-        echo '<a href="' . $syncurl->out() . '" class="btn btn-outline-primary mt-2">' .
-             get_string('syncnow', 'webexmeetings') . '</a> ';
+        echo $OUTPUT->single_button($syncurl, get_string('syncnow', 'webexmeetings'), 'post');
         
         // Check for unmatched users
         $unmatched_count = $DB->count_records('webexmeetings_unmatched', array(

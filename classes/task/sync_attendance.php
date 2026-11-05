@@ -82,7 +82,8 @@ class sync_attendance extends \core\task\scheduled_task {
             mtrace('Syncing meeting: ' . $meeting->name . ' (ID: ' . $meeting->meeting_id . ')');
             
             try {
-                $attendance_data = $webex_api->get_attendance($meeting->meeting_id);
+                $attendance_data = $webex_api->get_attendance($meeting->meeting_id, (int)$meeting->id,
+                    (int)$meeting->start_time, (int)$meeting->end_time);
                 
                 if ($attendance_data && !empty($attendance_data)) {
                     $synced = 0;
@@ -92,36 +93,8 @@ class sync_attendance extends \core\task\scheduled_task {
                             continue;
                         }
                         
-                        // Process each session
-                        foreach ($participant->sessions as $session_data) {
-                            $sessionid = $meeting->meeting_id . '_' . $participant->userid . '_' . $session_data->join_time;
-                            
-                            $existing = $DB->get_record('webexmeetings_sessions', array(
-                                'meetingid' => $meeting->id,
-                                'userid' => $participant->userid,
-                                'join_time' => $session_data->join_time
-                            ));
-                            
-                            if (!$existing) {
-                                $record = new \stdClass();
-                                $record->meetingid = $meeting->id;
-                                $record->userid = $participant->userid;
-                                $record->sessionid = $sessionid;
-                                $record->join_time = $session_data->join_time;
-                                $record->leave_time = $session_data->leave_time;
-                                $record->duration = $session_data->duration;
-                                
-                                $DB->insert_record('webexmeetings_sessions', $record);
-                            } else if ($existing->leave_time != $session_data->leave_time) {
-                                $existing->leave_time = $session_data->leave_time;
-                                $existing->duration = $session_data->duration;
-                                $DB->update_record('webexmeetings_sessions', $existing);
-                            }
-                        }
-                        
-                        // Update attendance summary
-                        require_once($GLOBALS['CFG']->dirroot . '/mod/webexmeetings/lib.php');
-                        webexmeetings_update_attendance_summary($meeting->id, $participant->userid);
+                        \mod_webexmeetings\local\attendance_mapping::store_sessions(
+                            (int)$meeting->id, (int)$participant->userid, $participant->sessions);
                         $synced++;
                     }
                     
