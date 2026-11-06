@@ -120,6 +120,11 @@ class mod_webexmeetings_mod_form extends moodleform_mod {
      */
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
+
+        // Leave time for submission/API processing; do not reject edits of existing meetings.
+        if (empty($this->_instance) && (int)$data['start_time'] < time() + MINSECS) {
+            $errors['start_time'] = get_string('starttimetoosoon', 'webexmeetings');
+        }
         
         // Validate times
         if ($data['end_time'] <= $data['start_time']) {

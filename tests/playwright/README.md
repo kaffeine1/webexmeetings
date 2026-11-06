@@ -10,6 +10,11 @@ must enable both recording notices and contain one unmatched identity with
 email synthetic@guest.webex.localhost. Its join URL must be
 https://example.webex.com/join/synthetic; Playwright intercepts it locally.
 No real Webex credentials or grant are needed.
+For creation-time validation, provide courseid and pastStart with the
+day/month/year/hour/minute select values for a past date in the synthetic
+admin's timezone (minute must be available in the date widget). The browser
+submits the real creation form, checks the field-level warning and retained
+values, and verifies that no API constructor was called.
 The personal-entry setting must initially be disabled. For its rejection
 scenario, add a second synthetic active account with the student's exact
 email (it need not be enrolled). The spec enables the setting via the admin

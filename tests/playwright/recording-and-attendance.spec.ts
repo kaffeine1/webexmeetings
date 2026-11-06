@@ -35,6 +35,29 @@ async function assertPasswordHidden(page) {
     await expect(page.locator('body')).not.toContainText(fixture.meetingPassword);
 }
 
+test('past start is a field warning and preserves the form without calling Webex', async ({page}) => {
+    if (!fixture.courseid || !fixture.pastStart || !fixture.apiStatePath) {
+        throw new Error('Synthetic course, past schedule and API state fixture required');
+    }
+    await login(page, fixture.admin);
+    const before = JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8')).constructs;
+    await page.goto(fixture.baseURL + '/course/modedit.php?add=webexmeetings&course=' + fixture.courseid + '&section=0');
+    await page.locator('#id_name').fill('Synthetic meeting with past start');
+    await page.getByRole('button', {name: /^(Schedule|Pianificazione|Programmazione)$/}).click();
+    for (const [part, value] of Object.entries(fixture.pastStart)) {
+        await page.locator('select[name="start_time[' + part + ']"]').selectOption(String(value));
+    }
+    await page.getByRole('button', {name: /Save and return to course|Salva e torna al corso/}).click();
+    await expect(page.locator('form.mform').getByText(/Choose a start time at least one minute|Imposta un orario di inizio tra almeno un minuto/)).toBeVisible();
+    await page.screenshot({path: test.info().outputPath('past-start-warning.png'), fullPage: true});
+    await expect(page.locator('#id_name')).toHaveValue('Synthetic meeting with past start');
+    for (const [part, value] of Object.entries(fixture.pastStart)) {
+        await expect(page.locator('select[name="start_time[' + part + ']"]')).toHaveValue(String(value));
+    }
+    expect(JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8')).constructs).toBe(before);
+    await expect(page.getByText(/Error code: meetingcreationerror|Webex API request failed/)).toHaveCount(0);
+});
+
 test('personal entry can be enabled and rejects ambiguous email without anonymous fallback', async ({page, context}) => {
     if (!fixture.apiStatePath || !fixture.adminemail) throw new Error('Synthetic entry API fixture required');
     const state = () => JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8'));

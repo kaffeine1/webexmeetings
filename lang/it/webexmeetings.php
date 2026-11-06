@@ -147,6 +147,7 @@ $string['oauthscopehost'] = 'Riunioni dell\'account autorizzante';
 $string['oauthscopeorganization'] = 'Riunioni dell\'organizzazione (amministratore Webex)';
 $string['oauthconnect'] = 'Collega Webex';
 $string['webexnavigation'] = 'Webex';
+$string['starttimetoosoon'] = 'Imposta un orario di inizio tra almeno un minuto. Webex non puo creare una riunione con un orario di inizio gia trascorso.';
 $string['oauthdelegateuser'] = 'Utente autorizzato a collegare Webex';
 $string['oauthdelegatewarning'] = 'L\'utente selezionato potra autorizzare o sostituire il collegamento Webex per tutta l\'istanza Moodle. Svuotare la selezione per revocare il permesso.';
 $string['oauthdelegatesaved'] = 'L\'utente autorizzato a collegare Webex e stato aggiornato.';
