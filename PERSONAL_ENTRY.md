@@ -13,8 +13,17 @@ checks run before link generation. A participant never receives the host
 start link. The bearer-style URLs are not stored, rendered or logged by the
 plugin; responses use no-store and no-referrer headers.
 
-The existing attendance import automatically matches an email to one active
-Moodle account. A personal join link provides Webex with that email instead
+The entry guard and attendance import use the same email resolver. An email
+belonging to one active Moodle account keeps the existing behaviour. If the
+email belongs to multiple active accounts, it can be resolved only when
+exactly one of them belongs to this activity's course and is actively enrolled.
+Expired, future and suspended enrolments and disabled enrolment methods still
+count when checking ambiguity: an enrolment change must not select a different
+account. Duplicates outside this course do not block its unique active member.
+Hosts with a shared email require an explicit attendance mapping.
+The signed-in account must itself be the selected
+account; it cannot borrow the identity of the enrolled duplicate.
+A personal join link provides Webex with that email instead
 of relying on a generic guest entry. Test that the actual participant report
 retains it: successful link generation alone is not an end-to-end attendance
 test. Names alone, usernames inferred from emails, and anonymous guest email
@@ -22,7 +31,7 @@ addresses are not identity proofs. Existing anonymous records are not
 reassigned retrospectively. Manual association remains available for genuine
 exceptions and later imports of the same saved identity.
 
-Invalid, shared or ambiguous email addresses stop personal entry, as do API
+Invalid or unresolved ambiguous email addresses stop personal entry, as do API
 failures or an unsafe destination. There is no automatic fallback to an
 anonymous link. Administrator intervention is required to correct an account
 or deliberately disable the option. A personal link is a short-lived bearer

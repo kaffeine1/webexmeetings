@@ -51,6 +51,129 @@ final class attendance_mapping_test extends \advanced_testcase {
             'joinedTime' => '2026-11-04T09:00:00Z', 'leftTime' => '2026-11-04T09:05:00Z'];
     }
 
+    public function test_shared_email_uses_the_only_active_course_member_even_after_two_outsiders(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $email = 'shared@example.invalid';
+        $this->getDataGenerator()->create_user(['email' => $email]);
+        $this->getDataGenerator()->create_user(['email' => $email]);
+        $member = $this->enrol($meeting);
+        $DB->set_field('user', 'email', $email, ['id' => $member->id]);
+        $record = $this->guest('shared-person', $email);
+        $this->assertSame((int)$member->id, (int)attendance_mapping::match($record, $meeting)->id);
+        $imported = (new attendance_import_stub())->import([$record], $meeting);
+        $this->assertCount(1, $imported);
+        $this->assertSame((int)$member->id, (int)$imported[0]->userid);
+        $this->assertSame(0, $DB->count_records('webexmeetings_unmatched', ['meetingid' => $meeting]));
+    }
+
+    public function test_shared_email_with_two_active_course_members_remains_unmatched(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        foreach ([1, 2] as $i) {
+            $member = $this->enrol($meeting);
+            $DB->set_field('user', 'email', 'shared@example.invalid', ['id' => $member->id]);
+        }
+        $record = $this->guest('shared-person', 'shared@example.invalid');
+        $this->assertNull(attendance_mapping::match($record, $meeting));
+        $this->assertSame([], (new attendance_import_stub())->import([$record], $meeting));
+        $this->assertSame(1, $DB->count_records('webexmeetings_unmatched', ['meetingid' => $meeting]));
+        $this->assertSame(0, $DB->count_records('webexmeetings_sessions', ['meetingid' => $meeting]));
+    }
+
+    public function test_shared_email_does_not_change_identity_with_enrolment_status(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $member = $this->enrol($meeting);
+        $other = $this->enrol($meeting);
+        foreach ([$member, $other] as $user) {
+            $DB->set_field('user', 'email', 'shared@example.invalid', ['id' => $user->id]);
+        }
+        foreach ([['timeend' => time() - 3600], ['timestart' => time() + 3600], ['status' => ENROL_USER_SUSPENDED]] as $change) {
+            $enrolment = $DB->get_record('user_enrolments', ['userid' => $other->id], '*', MUST_EXIST);
+            $enrolment->status = $change['status'] ?? ENROL_USER_ACTIVE;
+            $enrolment->timestart = $change['timestart'] ?? 0;
+            $enrolment->timeend = $change['timeend'] ?? 0;
+            $DB->update_record('user_enrolments', $enrolment);
+            $this->assertNull(attendance_mapping::match_email('shared@example.invalid', $meeting));
+            $this->assertSame([], (new attendance_import_stub())->import(
+                [$this->guest('shared-person', 'shared@example.invalid')], $meeting));
+        }
+        $DB->set_field('enrol', 'status', ENROL_INSTANCE_DISABLED, ['id' => $enrolment->enrolid]);
+        $this->assertNull(attendance_mapping::match_email('shared@example.invalid', $meeting));
+        $this->assertSame(0, $DB->count_records('webexmeetings_sessions', ['meetingid' => $meeting]));
+    }
+
+    public function test_shared_email_requires_an_active_unique_course_member(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $member = $this->enrol($meeting);
+        $this->getDataGenerator()->create_user(['email' => $member->email]);
+        $DB->set_field('user_enrolments', 'timeend', time() - 3600, ['userid' => $member->id]);
+        $this->assertNull(attendance_mapping::match_email($member->email, $meeting));
+        $DB->set_field('user_enrolments', 'timeend', 0, ['userid' => $member->id]);
+        $this->assertSame((int)$member->id, (int)attendance_mapping::match_email($member->email, $meeting)->id);
+    }
+
+    public function test_disabled_duplicate_enrolment_blocks_but_multiple_enrolments_of_one_user_do_not(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $member = $this->enrol($meeting);
+        $other = $this->getDataGenerator()->create_user(['email' => $member->email]);
+        $courseid = $DB->get_field('webexmeetings', 'course', ['id' => $meeting]);
+        $plugin = enrol_get_plugin('self');
+        $instanceid = $plugin->add_instance($DB->get_record('course', ['id' => $courseid]),
+            ['status' => ENROL_INSTANCE_DISABLED]);
+        $instance = $DB->get_record('enrol', ['id' => $instanceid], '*', MUST_EXIST);
+        $plugin->enrol_user($instance, $other->id);
+        $this->assertNull(attendance_mapping::match_email($member->email, $meeting));
+        $plugin->unenrol_user($instance, $other->id);
+        $plugin->enrol_user($instance, $member->id);
+        $this->assertSame((int)$member->id, (int)attendance_mapping::match_email($member->email, $meeting)->id);
+    }
+
+    public function test_shared_email_host_requires_explicit_mapping_but_unique_host_is_unchanged(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $host = $this->getDataGenerator()->create_user();
+        $record = $this->guest('host', $host->email);
+        $record->host = true;
+        $this->assertSame((int)$host->id, (int)attendance_mapping::match($record, $meeting)->id);
+        $member = $this->enrol($meeting);
+        $DB->set_field('user', 'email', $host->email, ['id' => $member->id]);
+        $this->assertNull(attendance_mapping::match($record, $meeting));
+        attendance_mapping::remember($record, $meeting, attendance_mapping::sessions($record));
+        $row = $DB->get_record('webexmeetings_unmatched', ['meetingid' => $meeting], '*', MUST_EXIST);
+        attendance_mapping::map($meeting, $row->id, $member->id);
+        $this->assertSame((int)$member->id, (int)attendance_mapping::match($record, $meeting)->id);
+        $DB->set_field('user_enrolments', 'status', ENROL_USER_SUSPENDED, ['userid' => $member->id]);
+        $this->assertNull(attendance_mapping::match($record, $meeting));
+    }
+
+    public function test_shared_email_needs_a_valid_course_context_and_does_not_cross_courses(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $meeting = $this->meeting();
+        $othermeeting = $this->meeting();
+        $member = $this->enrol($meeting);
+        $other = $this->enrol($othermeeting);
+        foreach ([$member, $other] as $user) {
+            $DB->set_field('user', 'email', 'shared@example.invalid', ['id' => $user->id]);
+        }
+        $this->assertNull(attendance_mapping::match_email('shared@example.invalid'));
+        $this->assertNull(attendance_mapping::match_email('shared@example.invalid', 999999));
+        $this->assertSame((int)$member->id,
+            (int)attendance_mapping::match_email('shared@example.invalid', $meeting)->id);
+        $this->assertSame((int)$other->id,
+            (int)attendance_mapping::match_email('shared@example.invalid', $othermeeting)->id);
+    }
+
     public function test_hundreds_of_unique_emails_match_without_manual_mapping(): void {
         global $DB;
         $this->resetAfterTest();

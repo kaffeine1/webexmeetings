@@ -35,6 +35,13 @@ async function assertPasswordHidden(page) {
     await expect(page.locator('body')).not.toContainText(fixture.meetingPassword);
 }
 
+async function setPersonalEntry(page, enabled) {
+    await page.goto(fixture.baseURL + '/admin/settings.php?section=modsettingwebexmeetings');
+    const setting = page.locator('input[type=checkbox][name="s_mod_webexmeetings_personalized_join"]');
+    await setting.setChecked(enabled);
+    await page.getByRole('button', {name: /Save changes|Salva modifiche/}).click();
+}
+
 test('past start is a field warning and preserves the form without calling Webex', async ({page}) => {
     if (!fixture.courseid || !fixture.pastStart || !fixture.apiStatePath) {
         throw new Error('Synthetic course, past schedule and API state fixture required');
@@ -56,6 +63,36 @@ test('past start is a field warning and preserves the form without calling Webex
     }
     expect(JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8')).constructs).toBe(before);
     await expect(page.getByText(/Error code: meetingcreationerror|Webex API request failed/)).toHaveCount(0);
+});
+
+test('shared email outside the course does not block the enrolled participant', async ({page, context}) => {
+    if (!fixture.scopedstudent || !fixture.scopedemail || !fixture.apiStatePath) {
+        throw new Error('Synthetic scoped user and outside-course duplicate required');
+    }
+    fs.writeFileSync(fixture.apiStatePath, JSON.stringify({constructs: 0, requests: [], fail: false}));
+    await context.route('https://example.webex.com/**', route => route.fulfill({status: 200,
+        contentType: 'text/html', body: '<h1>Synthetic scoped Webex entry</h1>'}));
+    await login(page, fixture.admin);
+    await setPersonalEntry(page, true);
+    try {
+        await context.clearCookies();
+        await login(page, fixture.scopedstudent);
+        await page.goto(fixture.baseURL + '/mod/webexmeetings/join.php?id=' + fixture.cmid);
+        await expect(page.getByRole('dialog')).toBeVisible();
+        const before = JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8'));
+        expect(before.constructs).toBe(0);
+        await page.getByRole('dialog').getByRole('button', {name: /OK, (enter|accedi)/}).click();
+        await expect(page.getByRole('heading', {name: 'Synthetic scoped Webex entry'})).toBeVisible();
+        const after = JSON.parse(fs.readFileSync(fixture.apiStatePath, 'utf8'));
+        expect(after.constructs).toBe(1);
+        expect(after.requests).toHaveLength(1);
+        expect(after.requests[0].email).toBe(fixture.scopedemail);
+        expect(after.requests[0].meetingid).toBe('synthetic-series');
+    } finally {
+        await context.clearCookies();
+        await login(page, fixture.admin);
+        await setPersonalEntry(page, false);
+    }
 });
 
 test('personal entry can be enabled and rejects ambiguous email without anonymous fallback', async ({page, context}) => {
@@ -107,7 +144,7 @@ test('personal entry can be enabled and rejects ambiguous email without anonymou
         await login(page, fixture.student);
         await page.goto(fixture.baseURL + '/mod/webexmeetings/join.php?id=' + fixture.cmid);
         await page.getByRole('dialog').getByRole('button', {name: /OK, (enter|accedi)/}).click();
-        await expect(page.getByText(/requires a valid email belonging to one active|richiede un indirizzo email valido associato a un solo/i)).toBeVisible();
+        await expect(page.getByText(/requires a valid email that identifies your account unambiguously|richiede un indirizzo email valido che identifichi senza ambiguita/i)).toBeVisible();
         expect(externalEntries).toBe(1);
         expect(state().constructs).toBe(2);
         expect(new URL(page.url()).origin).toBe(fixture.baseURL);

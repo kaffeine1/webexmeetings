@@ -17,7 +17,7 @@ submits the real creation form, checks the field-level warning and retained
 values, and verifies that no API constructor was called.
 The personal-entry setting must initially be disabled. For its rejection
 scenario, add a second synthetic active account with the student's exact
-email (it need not be enrolled). The spec enables the setting via the admin
+email and enrol both accounts in the course. The spec enables the setting via the admin
 form, checks that ambiguous identity blocks entry before any API request,
 then restores the option to disabled. Never seed this ambiguity on a real
 site. The disposable PHP development server must load
@@ -30,6 +30,10 @@ actual view/new-tab/notice/join controllers with success and failure from
 this explicit fake API, and verifies identity and no fallback. It does not
 call the real API class; that class has native tests and a separate live
 Webex probe. The browser spec does not certify real Webex attendance.
+Also provide scopedstudent and scopedemail for another synthetic enrolled
+account whose duplicate email belongs to an active account outside the course.
+The scoped-user scenario must reach the fake Webex destination, while the
+two-enrolled-accounts scenario must still stop before any API constructor.
 For the organiser pre-consent scenario, set auth_method=oauth on this
 disposable fixture without configuring any client secret or token: the test
 cancels before the API constructor. The admin must be allowed to manage it.

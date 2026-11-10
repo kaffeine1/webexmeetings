@@ -19,7 +19,7 @@ header('Cache-Control: no-store, private');
 header('Referrer-Policy: no-referrer');
 \mod_webexmeetings\local\recording_disclaimer::confirm($meeting, $context, $action);
 if (get_config('mod_webexmeetings', 'personalized_join')) {
-    $identity = \mod_webexmeetings\local\participant_identity::details($USER);
+    $identity = \mod_webexmeetings\local\participant_identity::details($USER, (int)$meeting->id);
     try {
         $api = new \mod_webexmeetings\external\webex_api();
         $link = $api->get_join_link((string)$meeting->meeting_id, $identity['email'], $identity['displayName']);

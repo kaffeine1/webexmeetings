@@ -72,11 +72,36 @@ final class attendance_mapping {
             return count($targets) === 1 && self::eligible($meetingid, $userid) ?
                 $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST) : null;
         }
+        return self::match_email($email, $meetingid, empty($record->host));
+    }
+
+    /** Resolve shared emails only for a unique course member whose enrolment is active. */
+    public static function match_email(string $email, int $meetingid = 0, bool $allowshared = true): ?\stdClass {
+        global $DB;
+        $email = trim($email);
         if ($email === '' || preg_match('/@guest\.webex\.localhost$/i', $email)) {
             return null;
         }
         $users = $DB->get_records('user', ['email' => $email, 'deleted' => 0, 'suspended' => 0], '', '*', 0, 2);
-        return count($users) === 1 ? reset($users) : null;
+        if (count($users) < 2) {
+            return $users ? reset($users) : null;
+        }
+        if ($meetingid < 1 || !$allowshared) {
+            return null;
+        }
+        $cm = get_coursemodule_from_instance('webexmeetings', $meetingid, 0, false, IGNORE_MISSING);
+        if (!$cm) {
+            return null;
+        }
+        // Count inactive enrolments too: expiry must not transfer a participant's identity.
+        $context = \context_module::instance($cm->id);
+        [$enrolledsql, $params] = get_enrolled_sql($context);
+        $params['webexparticipantemail'] = $email;
+        $users = $DB->get_records_sql("SELECT u.* FROM {user} u
+                WHERE u.email = :webexparticipantemail AND u.deleted = 0 AND u.suspended = 0
+                  AND u.id IN ($enrolledsql)", $params, 0, 2);
+        $user = count($users) === 1 ? reset($users) : null;
+        return $user && is_enrolled($context, $user, '', true) ? $user : null;
     }
 
     /** Preserve every entry interval, including multiple guests with no email. */

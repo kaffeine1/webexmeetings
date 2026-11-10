@@ -31,6 +31,46 @@ final class participant_identity_test extends \advanced_testcase {
         participant_identity::details($user);
     }
 
+    private function enrol_for_meeting(\stdClass $user): int {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $course = $this->getDataGenerator()->create_course();
+        $id = $DB->insert_record('webexmeetings', (object)['course' => $course->id, 'name' => 'Synthetic scoped identity']);
+        $cmid = add_course_module((object)['course' => $course->id,
+            'module' => $DB->get_field('modules', 'id', ['name' => 'webexmeetings']),
+            'instance' => $id, 'section' => 0]);
+        course_add_cm_to_section($course->id, $cmid, 0);
+        $this->getDataGenerator()->enrol_user($user->id, $course->id);
+        return $id;
+    }
+
+    public function test_duplicate_outside_course_does_not_block_the_enrolled_session_user(): void {
+        $user = $this->getDataGenerator()->create_user(['email' => 'shared@example.invalid']);
+        $this->getDataGenerator()->create_user(['email' => $user->email]);
+        $meeting = $this->enrol_for_meeting($user);
+        $this->assertSame(['email' => $user->email, 'displayName' => fullname($user)],
+            participant_identity::details($user, $meeting));
+    }
+
+    public function test_two_enrolled_users_with_the_same_email_are_still_rejected(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user(['email' => 'shared@example.invalid']);
+        $meeting = $this->enrol_for_meeting($user);
+        $other = $this->getDataGenerator()->create_user(['email' => $user->email]);
+        $courseid = $DB->get_field('webexmeetings', 'course', ['id' => $meeting]);
+        $this->getDataGenerator()->enrol_user($other->id, $courseid);
+        $this->expectException(\moodle_exception::class);
+        participant_identity::details($user, $meeting);
+    }
+
+    public function test_unenrolled_duplicate_cannot_borrow_the_enrolled_users_identity(): void {
+        $member = $this->getDataGenerator()->create_user(['email' => 'shared@example.invalid']);
+        $meeting = $this->enrol_for_meeting($member);
+        $outsider = $this->getDataGenerator()->create_user(['email' => $member->email]);
+        $this->expectException(\moodle_exception::class);
+        participant_identity::details($outsider, $meeting);
+    }
+
     public function test_another_accounts_email_cannot_be_supplied(): void {
         $user = $this->getDataGenerator()->create_user();
         $other = $this->getDataGenerator()->create_user();
